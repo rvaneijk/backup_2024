@@ -11,7 +11,10 @@ def backup_folder(dest_dir, source_dir, exclude, backup_type="INCR", archive_nam
     if archive_name:
         archive_name = f"{NOW} {archive_name}.7z"
     else:
-        archive_name = f"{NOW} {backup_type} {dest_dir.split('/')[-1]}.7z"
+        # Use the last part of the source_dir for the archive name
+        folder_name = source_dir.split('/')[-1]
+        archive_name = f"{NOW} {backup_type} {folder_name}.7z"
+    
     source_path = BASE_DIR / source_dir
     dest_path = AWS_DIR / dest_dir / archive_name
 

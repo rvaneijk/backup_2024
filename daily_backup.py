@@ -28,11 +28,12 @@ def main():
     for dir_path in config['git_dirs']:
         if not git_operations(dir_path):
             sys.exit(1)
-    
+
     logger.info("Starting backup operations...")
     for folder in config['backup_folders']:
-        logger.info(f"Backing up {folder['dest']}...")
-        if not backup_folder(folder['dest'], folder['source'], folder['exclude'], backup_type="INCR"):
+        logger.info(f"Backing up {folder['source']}...")
+        archive_name = folder['source'].split('/')[-1]  # Use the last part of the source path
+        if not backup_folder(folder['dest'], folder['source'], folder['exclude'], backup_type="INCR", archive_name=archive_name):
             sys.exit(1)
     
     logger.info("DISK space on the device:")
