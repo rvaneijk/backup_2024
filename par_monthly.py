@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+import yaml
 
 def run_command(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -47,11 +48,15 @@ def process_directory(base_dir, archive_name, incr):
 
 def get_archives_to_skip(archives):
     print("Select archives to skip (enter the number, separated by spaces):")
-    for i, (dir_name, archive_name) in enumerate(archives, 1):
-        print(f"{i}. {archive_name}")
+    for i, archive in enumerate(archives, 1):
+        print(f"{i}. {archive['archive_name']}")
     skip_input = input("Enter numbers to skip (or press Enter to process all): ")
     skip_numbers = [int(num) for num in skip_input.split() if num.isdigit()]
     return set(skip_numbers)
+
+def load_config(config_file):
+    with open(config_file, 'r') as file:
+        return yaml.safe_load(file)
 
 def main():
     if len(sys.argv) != 2:
@@ -65,31 +70,22 @@ def main():
     incr = sys.argv[1]
     base_path = "/mnt/e/mnt/aws.local"
     
-    archives = [
-        ("AWS Datakluis", "Datakluis"),
-        ("AWS Outlook", "Outlook"),
-        ("AWS Settings", "Settings"),
-        ("AWS Onze cd's", "Onze cd's"),
-        ("AWS Onze foto's", "Onze foto's"),
-        ("AWS Papers, presentations, webinars etc", "Papers, presentations, webinars etc"),
-        ("AWS PhD_archive", "PhD_archive"),
-        ("AWS Tools", "Tools"),
-        ("AWS Users", "Users")
-    ]
+    config = load_config('configs/monthly_config.yaml')
+    archives = config['backup_folders']
     
     archives_to_skip = get_archives_to_skip(archives)
     
     start_time = datetime.now()
     print(f"Starting par file creation process... ({start_time.strftime('%y%m%d %H:%M')})")
     
-    for i, (dir_name, archive_name) in enumerate(archives, 1):
+    for i, archive in enumerate(archives, 1):
         if i in archives_to_skip:
-            print(f"Skipping {archive_name}...")
+            print(f"Skipping {archive['archive_name']}...")
             continue
         
-        full_path = os.path.join(base_path, dir_name)
+        full_path = os.path.join(base_path, archive['dest'])
         if os.path.exists(full_path):
-            process_directory(full_path, archive_name, incr)
+            process_directory(full_path, archive['archive_name'], incr)
         else:
             print(f"Warning: Directory {full_path} does not exist. Skipping.")
     
