@@ -73,7 +73,8 @@ If you encounter any issues:
 
 SECURITY NOTE
 The BACKUP_PASSWORD is used to encrypt your backups. Make sure to keep this password safe and secure. If you lose this password, you won't be able to decrypt your backups.
-Contribution
+
+CONTRIBUTION
 If you'd like to contribute to this project, please submit a pull request or open an issue on the project's repository.
 
 UPDATING ENV
