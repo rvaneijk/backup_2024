@@ -1,52 +1,58 @@
 import os
 import sys
 import subprocess
-from core.config import load_config, AWS_DIR
+from core.config import (
+    AWS_DIR, MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY,
+    MONTHLY_BACKUP_FOLDERS, BACKUP_PASSWORD_ENV, ALLOW_SKIP_MONTHLY
+)
 from core.logger import setup_logging
-from core.file_system import check_mount
+from core.file_system import check_mount, unmount
 from core.backup_handler import backup_folder
 from core.utils import timer
-
-logger = setup_logging()
 
 def get_folders_to_skip(backup_folders):
     print("Select folders to skip (enter the number, separated by spaces):")
     for i, folder in enumerate(backup_folders, 1):
-        print(f"{i}. {folder['dest']}")
+        print(f"{i}. {folder['archive_name']}")
     skip_input = input("Enter numbers to skip (or press Enter to backup all): ")
     skip_numbers = [int(num) for num in skip_input.split() if num.isdigit()]
     return set(skip_numbers)
 
 def main():
+    logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY)
     start_time = timer()
     logger.info("Starting monthly backup process...")
     
-    config = load_config('configs/monthly_config.yaml')
-    
     check_mount()
     
-    if "BACKUP_PASSWORD" not in os.environ:
-        logger.error("Error: BACKUP_PASSWORD environment variable is not set")
-        logger.info("To run this script, set the BACKUP_PASSWORD environment variable:")
-        logger.info("export BACKUP_PASSWORD='your_secure_password'")
+    if BACKUP_PASSWORD_ENV not in os.environ:
+        logger.error(f"Error: {BACKUP_PASSWORD_ENV} environment variable is not set")
+        logger.info(f"To run this script, set the {BACKUP_PASSWORD_ENV} environment variable:")
+        logger.info(f"export {BACKUP_PASSWORD_ENV}='your_secure_password'")
         sys.exit(1)
     
     logger.info("DISK space on the device before backup:")
     subprocess.run(["df", "-h", "--total", str(AWS_DIR)])
     
-    if config.get('allow_skip', False):
-        folders_to_skip = get_folders_to_skip(config['backup_folders'])
+    if ALLOW_SKIP_MONTHLY:
+        folders_to_skip = get_folders_to_skip(MONTHLY_BACKUP_FOLDERS)
     else:
         folders_to_skip = set()
     
     logger.info("Starting backup operations...")
-    for i, folder in enumerate(config['backup_folders'], 1):
+    for i, folder in enumerate(MONTHLY_BACKUP_FOLDERS, 1):
         if i in folders_to_skip:
-            logger.info(f"Skipping {folder['dest']}...")
+            logger.info(f"Skipping {folder['archive_name']}...")
             continue
-        logger.info(f"Backing up {folder['dest']}...")
-        if not backup_folder(folder['dest'], folder['source'], folder['exclude'], 
-                             backup_type="MONTHLY", archive_name=folder['archive_name']):
+        logger.info(f"Backing up {folder['source']}...")
+        if not backup_folder(
+            folder['dest'], 
+            folder['source'], 
+            folder['exclude'], 
+            backup_type=MONTHLY_BACKUP_TYPE, 
+            archive_name=folder['archive_name']
+        ):
+            logger.error(f"Backup failed for {folder['archive_name']}. Exiting.")
             sys.exit(1)
     
     logger.info("DISK space on the device after backup:")
@@ -62,5 +68,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY)
         logger.exception("An unexpected error occurred:")
         sys.exit(1)
+    finally:
+        unmount()

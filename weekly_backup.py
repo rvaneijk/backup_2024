@@ -1,32 +1,39 @@
 import os
 import sys
 import subprocess
-from core.config import load_config, AWS_DIR
+from core.config import (
+    AWS_DIR, WEEKLY_BACKUP_TYPE, WEEKLY_FREQUENCY,
+    WEEKLY_BACKUP_FOLDERS, BACKUP_PASSWORD_ENV
+)
 from core.logger import setup_logging
-from core.file_system import check_mount
+from core.file_system import check_mount, unmount
 from core.backup_handler import backup_folder
 from core.utils import timer
 
-logger = setup_logging()
-
 def main():
+    logger = setup_logging(WEEKLY_BACKUP_TYPE, WEEKLY_FREQUENCY)
     start_time = timer()
     logger.info("Starting weekly backup process...")
     
-    config = load_config('configs/weekly_config.yaml')
-    
     check_mount()
     
-    if "BACKUP_PASSWORD" not in os.environ:
-        logger.error("Error: BACKUP_PASSWORD environment variable is not set")
-        logger.info("To run this script, set the BACKUP_PASSWORD environment variable:")
-        logger.info("export BACKUP_PASSWORD='your_secure_password'")
+    if BACKUP_PASSWORD_ENV not in os.environ:
+        logger.error(f"Error: {BACKUP_PASSWORD_ENV} environment variable is not set")
+        logger.info(f"To run this script, set the {BACKUP_PASSWORD_ENV} environment variable:")
+        logger.info(f"export {BACKUP_PASSWORD_ENV}='your_secure_password'")
         sys.exit(1)
     
     logger.info("Starting backup operations...")
-    for folder in config['backup_folders']:
-        logger.info(f"Backing up {folder['dest']}...")
-        if not backup_folder(folder['dest'], folder['source'], folder['exclude'], backup_type="WEEKLY"):
+    for folder in WEEKLY_BACKUP_FOLDERS:
+        logger.info(f"Backing up {folder['source']}...")
+        if not backup_folder(
+            folder['dest'], 
+            folder['source'], 
+            folder['exclude'], 
+            backup_type=WEEKLY_BACKUP_TYPE, 
+            archive_name=folder['archive_name']
+        ):
+            logger.error(f"Backup failed for {folder['archive_name']}. Exiting.")
             sys.exit(1)
     
     logger.info("DISK space on the device:")
@@ -42,5 +49,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
+        logger = setup_logging(WEEKLY_BACKUP_TYPE, WEEKLY_FREQUENCY)
         logger.exception("An unexpected error occurred:")
         sys.exit(1)
+    finally:
+        unmount()

@@ -1,3 +1,7 @@
+backup_type: FULL
+
+allow_skip: true
+
 backup_folders:
   - dest: "AWS Datakluis"
     source: "Datakluis"
@@ -35,5 +39,3 @@ backup_folders:
     source: "Users"
     archive_name: "BAK Users"
     exclude: "AFGEROND.pst"
-
-allow_skip: true
