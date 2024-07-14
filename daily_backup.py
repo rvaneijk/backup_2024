@@ -44,10 +44,12 @@ def main():
             sys.exit(1)
     
     logger.info("DISK space on the device:")
-    subprocess.run(["df", "-h", "--total", str(AWS_DIR)])
+    disk_space = subprocess.run(["df", "-h", "--total", str(AWS_DIR)], capture_output=True, text=True)
+    logger.info(disk_space.stdout)
     
     logger.info("TOTAL Size of the archive:")
-    subprocess.run(f"du -h -c {AWS_DIR} | grep total$", shell=True)
+    archive_size = subprocess.run(f"du -h -c {AWS_DIR} | grep total$", shell=True, capture_output=True, text=True)
+    logger.info(archive_size.stdout)
     
     elapsed_time = timer(start_time)
     logger.info(f"Daily backup completed. Duration: {elapsed_time}")

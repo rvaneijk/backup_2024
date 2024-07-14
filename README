@@ -76,5 +76,11 @@ The BACKUP_PASSWORD is used to encrypt your backups. Make sure to keep this pass
 Contribution
 If you'd like to contribute to this project, please submit a pull request or open an issue on the project's repository.
 
+UPDATING ENV
+$ source backup_env/bin/activate
+$ python -m pip install --upgrade pip
+$ pip list --outdated
+$ pip install --upgrade package_name
+
 LICENSE
 CC-BY
