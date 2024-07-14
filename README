@@ -54,6 +54,13 @@ $ python3 monthly_backup.py
 
 This script will create monthly backups and allows you to skip certain folders if desired.
 
+MONTHLY PAR FILES
+To add PAR files to the monthly backup:
+
+$ python3 par_monthly.py YYMMDD
+
+This script will create additional PAR files for the monthly backups for added redundancy when storing in the could, if desired.
+
 LOGS
 Logs for each backup run are stored in the ~/backup_logs directory. Each log file is named with the date of the backup run.
 
@@ -73,9 +80,6 @@ If you encounter any issues:
 
 SECURITY NOTE
 The BACKUP_PASSWORD is used to encrypt your backups. Make sure to keep this password safe and secure. If you lose this password, you won't be able to decrypt your backups.
-
-CONTRIBUTION
-If you'd like to contribute to this project, please submit a pull request or open an issue on the project's repository.
 
 UPDATING ENV
 $ source backup_env/bin/activate
