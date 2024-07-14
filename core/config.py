@@ -4,9 +4,10 @@ from pathlib import Path
 # Base directories
 BASE_DIR = Path("/mnt/e")
 AWS_DIR = BASE_DIR / "mnt/aws.local"
-LOG_DIR = BASE_DIR / "BAK"  # Changed log directory
+LOG_DIR = BASE_DIR / "BAK"
 
 # Configuration file paths
+COMMON_CONFIG = Path("configs/common_config.yaml")
 DAILY_CONFIG = Path("configs/daily_config.yaml")
 WEEKLY_CONFIG = Path("configs/weekly_config.yaml")
 MONTHLY_CONFIG = Path("configs/monthly_config.yaml")
@@ -17,9 +18,13 @@ def load_config(config_file):
         return yaml.safe_load(file)
 
 # Load configurations
+common_config = load_config(COMMON_CONFIG)
 daily_config = load_config(DAILY_CONFIG)
 weekly_config = load_config(WEEKLY_CONFIG)
 monthly_config = load_config(MONTHLY_CONFIG)
+
+# Git directories (shared across all backup types)
+GIT_DIRS = common_config['git_dirs']
 
 # Backup types
 DAILY_BACKUP_TYPE = daily_config.get('backup_type', 'INCR')
@@ -33,9 +38,6 @@ MONTHLY_FREQUENCY = 'Monthly'
 
 # Other configurations
 ALLOW_SKIP_MONTHLY = monthly_config.get('allow_skip', True)
-
-# Git directories (for daily backups)
-GIT_DIRS = daily_config.get('git_dirs', [])
 
 # Backup folders
 DAILY_BACKUP_FOLDERS = daily_config.get('backup_folders', [])

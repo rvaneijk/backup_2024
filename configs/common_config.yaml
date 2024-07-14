@@ -1,0 +1,16 @@
+# common_config.yaml
+git_dirs:
+  - "Datakluis/Administratie privé"
+  - "Datakluis/Belastingdienst"
+  - "Datakluis/Blaeu Privacy Response Team B.V"
+  - "Datakluis/Delia Natuurlijke Haarkleuring"
+  - "Datakluis/Maandelijkse Checklist en Handleidingen"
+  - "BAK/BAK Settings"
+  - "Datakluis/Workspace/actief"
+  - "Datakluis/Workspace/afgerond"
+  - "Papers, presentations, webinars etc"
+  - "Users/cursus en training"
+  - "Users/dchin"
+  - "Users/dharma/Niet weg, aantekeningen"
+  - "Users/rvaneijk"
+  - "Users/literatuur"

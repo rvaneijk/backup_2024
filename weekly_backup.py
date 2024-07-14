@@ -3,10 +3,11 @@ import sys
 import subprocess
 from core.config import (
     AWS_DIR, WEEKLY_BACKUP_TYPE, WEEKLY_FREQUENCY,
-    WEEKLY_BACKUP_FOLDERS, BACKUP_PASSWORD_ENV
+    WEEKLY_BACKUP_FOLDERS, GIT_DIRS, BACKUP_PASSWORD_ENV
 )
 from core.logger import setup_logging
 from core.file_system import check_mount, unmount
+from core.git_handler import git_operations
 from core.backup_handler import backup_folder
 from core.utils import timer
 
@@ -23,6 +24,12 @@ def main():
         logger.info(f"export {BACKUP_PASSWORD_ENV}='your_secure_password'")
         sys.exit(1)
     
+    logger.info("Starting Git operations...")
+    for dir_path in GIT_DIRS:
+        if not git_operations(dir_path):
+            logger.error(f"Git operations failed for {dir_path}. Exiting.")
+            sys.exit(1)
+
     logger.info("Starting backup operations...")
     for folder in WEEKLY_BACKUP_FOLDERS:
         logger.info(f"Backing up {folder['source']}...")
