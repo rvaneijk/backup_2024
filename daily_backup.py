@@ -6,7 +6,7 @@ from core.config import (
     DAILY_BACKUP_FOLDERS, GIT_DIRS, BACKUP_PASSWORD_ENV
 )
 from core.logger import setup_logging
-from core.file_system import check_mount, unmount
+from core.file_system import check_mount
 from core.git_handler import git_operations
 from core.backup_handler import backup_folder
 from core.utils import timer
@@ -59,5 +59,3 @@ if __name__ == "__main__":
         logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY)
         logger.exception("An unexpected error occurred:")
         sys.exit(1)
-    finally:
-        unmount()

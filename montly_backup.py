@@ -6,7 +6,7 @@ from core.config import (
     MONTHLY_BACKUP_FOLDERS, BACKUP_PASSWORD_ENV, ALLOW_SKIP_MONTHLY
 )
 from core.logger import setup_logging
-from core.file_system import check_mount, unmount
+from core.file_system import check_mount
 from core.backup_handler import backup_folder
 from core.utils import timer
 
@@ -71,5 +71,3 @@ if __name__ == "__main__":
         logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY)
         logger.exception("An unexpected error occurred:")
         sys.exit(1)
-    finally:
-        unmount()
