@@ -13,12 +13,15 @@ $ python3 -m venv backup_env
 $ source backup_env/bin/activate
 
 5. Install the required dependencies:
-	pip install -r requirements.txt
+
+$ pip install -r requirements.txt
+
 6. Set up your configuration files in the configs directory:
 	- daily_config.yaml
 	- weekly_config.yaml
 	- monthly_config.yaml
 	Adjust these files to specify the directories and files you want to backup.
+
 7. Ensure you have 7-Zip installed on your system, as it's used for creating the backup archives.
 
 USAGE
