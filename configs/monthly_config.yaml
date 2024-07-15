@@ -38,4 +38,4 @@ backup_folders:
   - dest: "AWS Users"
     source: "Users"
     archive_name: "BAK Users"
-    exclude: "
+    exclude: ""
