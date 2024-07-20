@@ -1,82 +1,58 @@
-BACKUP SYSTEM
-This backup system provides daily, weekly, and monthly backup capabilities for specified directories and files.
+BACKUP SYSTEM 
+A backup system provides daily, weekly, and monthly backup capabilities for specified directories and files.
+
+Note: this approach is bespoke to my needs. The code is not intended to run an any other system than my own.
 
 SETUP
 1. Ensure you have Python 3.6 or later installed on your system.
 2. Clone this repository or download the scripts to your local machine.
 3. Create a virtual environment:
-
-$ python3 -m venv backup_env
-
+	$ python3 -m venv backup_env
 4. Activate the virtual environment:
-
-$ source backup_env/bin/activate
-
+	$ source backup_env/bin/activate
 5. Install the required dependencies:
-
-$ pip install -r requirements.txt
-
+	$ pip install -r requirements.txt
 6. Set up your configuration files in the configs directory:
 	- daily_config.yaml
 	- weekly_config.yaml
 	- monthly_config.yaml
 	Adjust these files to specify the directories and files you want to backup.
-
 7. Ensure you have 7-Zip installed on your system, as it's used for creating the backup archives.
 
 USAGE
 Before running any backup script, activate the virtual environment if it's not already activated:
-
-$ source backup_env/bin/activate
-
+	$ source backup_env/bin/activate
 Then, set the BACKUP_PASSWORD environment variable. This password will be used to encrypt your backup archives
-
-$ export BACKUP_PASSWORD='your_secure_password'
+	$ export BACKUP_PASSWORD='your_secure_password'
 
 DAILY BACKUP
 To run the daily backup:
-
-$ python3 daily_backup.py
-
+	$ python3 daily_backup.py
 This script will perform Git operations on specified directories and then create incremental backups.
 
 WEEKLY BACKUP
 To run the weekly backup:
-
-$ python3 weekly_backup.py
-
+	$ python3 weekly_backup.py
 This script will create weekly backups of specified folders.
 
 MONTHLY BACKUP
 To run the monthly backup:
-
-$ python3 monthly_backup.py
-
+	$ python3 monthly_backup.py --archive
 This script will create monthly backups and allows you to skip certain folders if desired.
 
 MONTHLY PAR FILES
 To add PAR files to the monthly backup:
-
-$ python3 par_monthly.py YYMMDD
-
+	$ python3 monthly_backup --par YYMMDD
 This script will create additional PAR files for the monthly backups for added redundancy when storing in the could, if desired.
 
 LOGS
-Logs for each backup run are stored in the ~/backup_logs directory. Each log file is named with the date of the backup run.
+Logs for each backup run are stored on my local system. Each log file is named with the date of the backup run.
 
 CUSTOMIZATION
 You can customize the backup behavior by modifying the configuration files in the configs directory. Each configuration file (daily_config.yaml, weekly_config.yaml, monthly_config.yaml) allows you to specify:
-- Directories for Git operations (daily only)
+- Directories for Git operations
 - Folders to backup
 - Files or directories to exclude from backups
-
-Troubleshooting
-If you encounter any issues:
-
-1. Check the log files in ~/backup_logs for error messages.
-2. Ensure the BACKUP_PASSWORD environment variable is set.
-3. Verify that all paths in your configuration files are correct and accessible.
-4. Make sure you have sufficient permissions to read the source directories and write to the backup destination.
 
 SECURITY NOTE
 The BACKUP_PASSWORD is used to encrypt your backups. Make sure to keep this password safe and secure. If you lose this password, you won't be able to decrypt your backups.
