@@ -3,12 +3,12 @@ import subprocess
 import sys
 import logging
 from pathlib import Path
-from .config import AWS_DIR
+from .config import AWS_DIR, BASE_DIR
 
 logger = logging.getLogger(__name__)
 
 def check_mount():
-    mount_point = Path("/mnt/e")
+    mount_point = BASE_DIR
     
     if not mount_point.is_mount():
         logger.info("Backup disk is not mounted. Attempting to mount...")

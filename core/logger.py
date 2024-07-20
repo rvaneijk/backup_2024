@@ -4,7 +4,7 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from .config import LOG_DIR
+from .config import LOG_DIR, AWS_DIR
 
 def get_directory_size(path):
     total_size = 0
@@ -34,21 +34,27 @@ class JobLogger:
         console_handler.setFormatter(formatter)
 
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,
             handlers=[file_handler, console_handler]
         )
         
         logger = logging.getLogger(__name__)
         
-        if log_file.stat().st_size == 0:
-            logger.info(f"Logging started ({log_file})")
-        else:
-            logger.info(f"Appending to existing log file ({log_file})")
-        
         job_name = f"{self.start_time:%Y%m%d-%w}. {self.backup_frequency} - {self.backup_type}"
-        logger.info(f"================================ Job Start: {job_name} =================================")
+        
+        if log_file.stat().st_size == 0:
+           logger.info(f"========================= Job Start: {job_name} ==========================")
+           logger.info(f"Logging started ({log_file})")
+           logger.info(f"========================================================================================")
+        else:
+            logger.info(f"========================= Job Start: {job_name} ==========================")
+            logger.info(f"Appending to existing log file ({log_file})")
+            logger.info(f"========================================================================================")
         
         return logger
+
+    def debug(self, message):
+        self.logger.debug(message)
 
     def info(self, message):
         self.logger.info(message)
@@ -59,19 +65,37 @@ class JobLogger:
     def error(self, message):
         self.logger.error(message)
 
+    def exception(self, message):
+        self.logger.exception(message)
+
+    def log_backup_start(self, source_folder):
+        self.logger.info(f"Backing up {source_folder}...")
+
+    def log_backup_success(self, archive_name):
+        self.logger.info(f"Backup successful: {archive_name}")
+
+    def log_backup_test(self, archive_name):
+        self.logger.info(f"Backup test successful: {archive_name}")
+
+    def log_backup_failure(self, archive_name, error):
+        self.logger.error(f"Backup failed: {archive_name}")
+        self.logger.error(f"Error: {error}")
+
+    def log_backup_stats(self, archive_name, size, duration):
+        self.logger.info(f"Backup stats for {archive_name}:")
+        self.logger.info(f"  Size: {size:.2f} GB")
+        self.logger.info(f"  Duration: {duration}")
+
+    def generate_archive_name(self, base_name):
+        return f"{datetime.now():%y%m%d} {self.backup_type} {base_name}.7z"
+
     def log_git_status(self, folder):
         try:
-            # Change to the folder directory
             os.chdir(folder)
-            
-            # Get git status
             status_output = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
             
             if status_output:
-                # There are changes, log the detailed status
                 self.logger.info(f"Changes detected in {folder}:")
-                
-                # Process each line of the status output
                 for line in status_output.split('\n'):
                     status, filename = line[:2], line[3:]
                     if status == '??':
@@ -83,17 +107,14 @@ class JobLogger:
                     else:
                         self.logger.info(f"  {status} {filename}")
                 
-                # Add and commit changes
                 subprocess.run(['git', 'add', '.'], check=True)
                 commit_message = f"{datetime.now():%y%m%d %H:%M}"
                 subprocess.run(['git', 'commit', '-m', commit_message], check=True)
                 self.logger.info(f"Changes committed in {folder}")
                 
-                # Log the last commit
                 last_commit = subprocess.check_output(['git', 'log', '-1', '--oneline']).decode('utf-8').strip()
                 self.logger.info(f"Last commit: {last_commit}")
             else:
-                # No changes
                 self.logger.info(f"No changes to commit in {folder}")
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Git operation failed in {folder}: {str(e)}")
@@ -105,23 +126,25 @@ class JobLogger:
         duration = end_time - self.start_time
         job_name = f"{self.start_time:%Y%m%d-%w}. {self.backup_frequency} - {self.backup_type}"
         
-        # Get the size of the backup directory
         backup_path = "/mnt/e/mnt/aws.local"
         backup_size = get_directory_size(backup_path)
         backup_size_gb = backup_size / (1024 * 1024 * 1024)  # Convert to GB
         
-        self.logger.info(f"================================= Job End: {job_name} ==================================")
-        self.logger.info(f"{job_name}")
-        self.logger.info(f"{self.start_time.strftime('%d-%m-%Y %H:%M:%S')}  Job {self.backup_type} {self.backup_frequency} started")
-        self.logger.info(f"{end_time.strftime('%d-%m-%Y %H:%M:%S')}  Job {self.backup_type} {self.backup_frequency} ended")
+        self.logger.info(f"========================== Job End: {job_name} ===========================")
+        self.logger.info(f"{self.start_time.strftime('%d-%m-%Y %H:%M:%S')}  Job started")
+        self.logger.info(f"{end_time.strftime('%d-%m-%Y %H:%M:%S')}  Job completed")
         self.logger.info(f"Duration: {duration}")
+        self.logger.info("")  # Add an empty line
         self.logger.info(f"Backup size (/mnt/e/mnt/aws.local): {backup_size_gb:.2f} GB")
         
-        # Add warning if backup size is 900 GB or larger
         if backup_size_gb >= 900:
-            self.logger.warning("WARNING: consider purging files")
+            self.logger.warning("")  # Add an empty line
+            self.logger.warning("")  # Add an empty line
+            self.logger.warning("Consider purging files")
+            self.logger.warning("")  # Add an empty line
+            self.logger.warning("")  # Add an empty line
         
-        self.logger.info("")  # Add an empty line
+        self.logger.info(f"========================================================================================")
 
 def setup_logging(backup_type, backup_frequency):
     return JobLogger(backup_type, backup_frequency)
