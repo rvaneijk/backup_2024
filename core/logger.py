@@ -15,10 +15,11 @@ def get_directory_size(path):
     return total_size
 
 class JobLogger:
-    def __init__(self, backup_type, backup_frequency):
+    def __init__(self, backup_type, backup_frequency, debug_mode=False):
         self.backup_type = backup_type
         self.backup_frequency = backup_frequency
         self.start_time = datetime.now()
+        self.debug_mode = debug_mode
         self.logger = self._setup_logging()
 
     def _setup_logging(self):
@@ -34,7 +35,7 @@ class JobLogger:
         console_handler.setFormatter(formatter)
 
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.DEBUG if self.debug_mode else logging.INFO,
             handlers=[file_handler, console_handler]
         )
         
@@ -90,32 +91,36 @@ class JobLogger:
         return f"{datetime.now():%y%m%d} {self.backup_type} {base_name}.7z"
 
     def log_git_status(self, folder):
+        if not self.debug_mode:
+            self.logger.info(f"Git operations for {folder} (use --debug for detailed status)")
+            return
+
         try:
             os.chdir(folder)
             status_output = subprocess.check_output(['git', 'status', '--porcelain']).decode('utf-8').strip()
             
             if status_output:
-                self.logger.info(f"Changes detected in {folder}:")
+                self.logger.debug(f"Changes detected in {folder}:")
                 for line in status_output.split('\n'):
                     status, filename = line[:2], line[3:]
                     if status == '??':
-                        self.logger.info(f"  New file: {filename}")
+                        self.logger.debug(f"  New file: {filename}")
                     elif status == ' M':
-                        self.logger.info(f"  Modified: {filename}")
+                        self.logger.debug(f"  Modified: {filename}")
                     elif status == ' D':
-                        self.logger.info(f"  Deleted: {filename}")
+                        self.logger.debug(f"  Deleted: {filename}")
                     else:
-                        self.logger.info(f"  {status} {filename}")
+                        self.logger.debug(f"  {status} {filename}")
                 
                 subprocess.run(['git', 'add', '.'], check=True)
                 commit_message = f"{datetime.now():%y%m%d %H:%M}"
                 subprocess.run(['git', 'commit', '-m', commit_message], check=True)
-                self.logger.info(f"Changes committed in {folder}")
+                self.logger.debug(f"Changes committed in {folder}")
                 
                 last_commit = subprocess.check_output(['git', 'log', '-1', '--oneline']).decode('utf-8').strip()
-                self.logger.info(f"Last commit: {last_commit}")
+                self.logger.debug(f"Last commit: {last_commit}")
             else:
-                self.logger.info(f"No changes to commit in {folder}")
+                self.logger.debug(f"No changes to commit in {folder}")
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Git operation failed in {folder}: {str(e)}")
         except Exception as e:
@@ -146,5 +151,5 @@ class JobLogger:
         
         self.logger.info(f"========================================================================================")
 
-def setup_logging(backup_type, backup_frequency):
-    return JobLogger(backup_type, backup_frequency)
+def setup_logging(backup_type, backup_frequency, debug_mode=False):
+    return JobLogger(backup_type, backup_frequency, debug_mode)

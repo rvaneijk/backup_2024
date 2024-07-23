@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Daily Backup Script
 
@@ -7,7 +8,7 @@ and leverages various utility functions from the core package.
 
 The script performs the following main operations:
 1. Sets up logging
-2. Checks if the backup destination is mounted and attempts to mount if not
+2. Checks if the backup destination is mounted
 3. Verifies the presence of the backup password environment variable
 4. Displays available disk space before backup
 5. Performs Git operations on specified directories
@@ -16,11 +17,15 @@ The script performs the following main operations:
 Usage:
     Ensure the BACKUP_PASSWORD_ENV environment variable is set before running:
     $ export BACKUP_PASSWORD_ENV='your_secure_password'
-    $ python daily_backup.py
+    $ python daily_backup.py [--debug]
+
+Options:
+    --debug     Enable debug logging (default: INFO level logging)
+    --help      Show this help message and exit
 
 Dependencies:
     - core package (config, logger, file_system, git_handler, backup_handler, utils)
-    - os, sys, subprocess (standard library)
+    - os, sys, subprocess, argparse (standard library)
 
 Exit codes:
     0: Success
@@ -30,6 +35,7 @@ Exit codes:
 import os
 import sys
 import subprocess
+import argparse
 from core.config import (
     AWS_DIR, DAILY_BACKUP_TYPE, DAILY_FREQUENCY,
     DAILY_BACKUP_FOLDERS, GIT_DIRS, BACKUP_PASSWORD_ENV
@@ -40,13 +46,18 @@ from core.git_handler import git_operations
 from core.backup_handler import backup_folder
 from core.utils import timer
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Daily Backup Script")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    return parser.parse_args()
+
 def main():
     """
     Main function to execute the daily backup process.
 
     This function orchestrates the entire backup process, including:
     - Setting up logging
-    - Checking if the backup destination is mounted and attempting to mount if not
+    - Checking if the backup destination is mounted
     - Verifying the presence of the backup password environment variable
     - Displaying available disk space before backup
     - Performing Git operations on specified directories
@@ -57,23 +68,16 @@ def main():
     Returns:
         None
     """
-    logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY)
+    args = parse_arguments()
+    logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY, args.debug)
     start_time = timer()
     logger.info("Starting daily backup process...")
+    logger.info("Use --debug option for more detailed logging if needed.")
     
     # Check if the backup destination is mounted
     if not check_mount():
-        logger.error("Backup destination is not mounted. Attempting to mount...")
-        try:
-            # Assuming there's a mount_backup_destination function in core.file_system
-            from core.file_system import mount_backup_destination
-            if not mount_backup_destination():
-                logger.error("Failed to mount backup destination. Exiting.")
-                sys.exit(1)
-            logger.info("Backup destination mounted successfully.")
-        except ImportError:
-            logger.error("mount_backup_destination function not found. Please mount the destination manually.")
-            sys.exit(1)
+        logger.error("Failed to access the backup destination. Exiting.")
+        sys.exit(1)
     
     # Check for backup password
     if BACKUP_PASSWORD_ENV not in os.environ:
@@ -105,12 +109,16 @@ def main():
             logger.error(f"Backup failed for {folder['archive_name']}. Exiting.")
             sys.exit(1)
     
+    end_time = timer(start_time)
+    logger.info(f"Daily backup process completed. Total duration: {end_time}")
+    logger.info("For more detailed logs, use the --debug option when running the script.")
     logger.close()
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY)
+        args = parse_arguments()
+        logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY, args.debug)
         logger.exception("An unexpected error occurred:")
         sys.exit(1)

@@ -8,20 +8,18 @@ from .config import AWS_DIR, BASE_DIR
 logger = logging.getLogger(__name__)
 
 def check_mount():
-    mount_point = BASE_DIR
-    
-    if not mount_point.is_mount():
+    if not BASE_DIR.is_mount():
         logger.info("Backup disk is not mounted. Attempting to mount...")
         
         # Try to mount the disk
         result = subprocess.run([
-            "sudo", "mount", "-t", "drvfs", "E:", str(mount_point),
+            "sudo", "mount", "-t", "drvfs", "E:", str(BASE_DIR),
             "-o", "metadata,uid=rvaneijk,gid=rvaneijk"
         ], capture_output=True, text=True)
         
         if result.returncode != 0:
             logger.error(f"Failed to mount the backup disk: {result.stderr}")
-            sys.exit(1)
+            return False
         else:
             logger.info("Backup disk mounted successfully.")
     else:
@@ -30,9 +28,10 @@ def check_mount():
     # Check if the AWS_DIR exists
     if not AWS_DIR.exists():
         logger.error(f"Backup directory {AWS_DIR} does not exist. Please check your USB drive.")
-        sys.exit(1)
+        return False
     
     logger.info(f"Backup directory {AWS_DIR} is accessible.")
+    return True
 
 def unmount():
     mount_point = Path("/mnt/e")

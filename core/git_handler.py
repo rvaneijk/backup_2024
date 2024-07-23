@@ -9,19 +9,19 @@ logger = logging.getLogger(__name__)
 def git_operations(dir_path):
     full_path = BASE_DIR / dir_path
     os.chdir(full_path)
-    logger.info(f"Processing {dir_path}")
+    logger.info(f"Git: Processing {dir_path}...")
     logger.info(f"Current working directory: {os.getcwd()}")
     
     try:
-        # Log Git status before operations
-        logger.info("Git status before operations:")
+        # Log Git status before operations 
+        logger.debug("Git status before operations:")
         status_before = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True)
-        logger.info(status_before.stdout.strip() if status_before.stdout.strip() else "No changes")
+        logger.debug(status_before.stdout.strip() if status_before.stdout.strip() else "No changes")
 
         # Add all changes
-        logger.info("Adding all changes...")
+        logger.debug("Adding all changes...")
         add_result = subprocess.run(["git", "add", "."], capture_output=True, text=True, check=True)
-        logger.info(f"Git add output: {add_result.stdout.strip()}")
+        logger.debug(f"Git add output: {add_result.stdout.strip()}")
 
         # Check if there are changes to commit
         status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True)
@@ -35,16 +35,16 @@ def git_operations(dir_path):
             logger.info(f"Changes committed in {dir_path}")
         else:
             # No changes to commit
-            logger.info(f"No changes to commit in {dir_path}")
+            logger.debug(f"No changes to commit in {dir_path}")
         
         # Show detailed status after operations
-        logger.info("Git status after operations:")
+        logger.debug("Git status after operations:")
         status_after = subprocess.run(["git", "status"], capture_output=True, text=True, check=True)
-        logger.info(status_after.stdout.strip())
+        logger.debug(status_after.stdout.strip())
 
         # Log last commit
         last_commit = subprocess.run(["git", "log", "-1", "--oneline"], capture_output=True, text=True, check=True)
-        logger.info(f"Last commit: {last_commit.stdout.strip()}")
+        logger.debug(f"Last commit: {last_commit.stdout.strip()}")
         
     except subprocess.CalledProcessError as e:
         logger.error(f"Git operation failed in {dir_path}: {e}")
