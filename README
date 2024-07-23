@@ -17,7 +17,10 @@ SETUP
 	- weekly_config.yaml
 	- monthly_config.yaml
 	Adjust these files to specify the directories and files you want to backup.
-7. Ensure you have 7-Zip installed on your system, as it's used for creating the backup archives.
+7. Ensure you have 7-Zip installed on your system, as it's used for creating the backup archives. 
+
+Alternative setup
+sudo rsync -av --progress --include='backup_env/***' --include='configs/***' --include='core/***' --include='tests' --exclude='.git' --include='*' /mnt/c/workspace/backup_2024/ ~
 
 USAGE
 Before running any backup script, activate the virtual environment if it's not already activated:
