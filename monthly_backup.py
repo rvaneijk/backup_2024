@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Integrated Monthly Backup Script
 
@@ -23,12 +22,6 @@ Usage:
 
     where YYMMDD is the date of the backup in YYMMDD format.
 
-Arguments:
-    --archive : Run the archive (backup) task
-    --par YYMMDD : Run the PAR file creation task
-    --debug : Enable debug logging (default: INFO level logging)
-    --help : Show this help message and exit
-
 Environment Variables:
     BACKUP_PASSWORD_ENV: Must be set for the archive task (contains the backup password)
 
@@ -36,10 +29,6 @@ Dependencies:
     - core package (config, logger, file_system, backup_handler, utils, git_handler)
     - Standard libraries: os, sys, subprocess, argparse, datetime, yaml
     - External: par2 command-line tool (for PAR task)
-
-Exit codes:
-    0: Success
-    1: Error (check logs for details)
 """
 
 import os
@@ -48,6 +37,7 @@ import subprocess
 import argparse
 from datetime import datetime
 import yaml
+from typing import List, Dict, Set
 
 from core.config import (
     AWS_DIR, MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY,
@@ -60,15 +50,31 @@ from core.backup_handler import backup_folder
 from core.utils import timer
 from core.git_handler import git_operations
 
-def run_command(command):
-    """Execute a shell command and return its success status."""
+def run_command(command: str) -> bool:
+    """
+    Execute a shell command and return its success status.
+
+    Args:
+        command (str): The command to execute.
+
+    Returns:
+        bool: True if the command was successful, False otherwise.
+    """
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"Warning: Command failed with error: {result.stderr}")
     return result.returncode == 0
 
-def process_directory(base_dir, archive_name, incr, logger):
-    """Process a directory for PAR file creation."""
+def process_directory(base_dir: str, archive_name: str, incr: str, logger) -> None:
+    """
+    Process a directory for PAR file creation.
+
+    Args:
+        base_dir (str): The base directory to process.
+        archive_name (str): The name of the archive.
+        incr (str): The increment value.
+        logger: The logger object.
+    """
     os.chdir(base_dir)
     logger.info(f"Processing {base_dir}")
     
@@ -103,8 +109,17 @@ def process_directory(base_dir, archive_name, incr, logger):
     else:
         logger.info("All files processed successfully.")
 
-def get_items_to_skip(items, skip_prompt):
-    """Prompt the user to select items to skip during processing."""
+def get_items_to_skip(items: List[Dict], skip_prompt: str) -> Set[int]:
+    """
+    Prompt the user to select items to skip during processing.
+
+    Args:
+        items (List[Dict]): List of items to potentially skip.
+        skip_prompt (str): The prompt to display to the user.
+
+    Returns:
+        Set[int]: Set of item numbers to skip.
+    """
     print(skip_prompt)
     for i, item in enumerate(items, 1):
         print(f"{i}. {item['archive_name']}")
@@ -112,8 +127,19 @@ def get_items_to_skip(items, skip_prompt):
     skip_numbers = [int(num) for num in skip_input.split() if num.isdigit()]
     return set(skip_numbers)
 
-def load_config(config_file):
-    """Load configuration from a YAML file."""
+def load_config(config_file: str) -> Dict:
+    """
+    Load configuration from a YAML file.
+
+    Args:
+        config_file (str): Path to the YAML config file.
+
+    Returns:
+        Dict: Loaded configuration.
+
+    Raises:
+        SystemExit: If there's an error parsing the config file or if it's not found.
+    """
     try:
         with open(config_file, 'r') as file:
             return yaml.safe_load(file)
@@ -124,8 +150,13 @@ def load_config(config_file):
         print(f"Config file not found: {config_file}")
         sys.exit(1)
 
-def archive_task(logger):
-    """Perform the archive task (monthly backup)."""
+def archive_task(logger) -> None:
+    """
+    Perform the archive task (monthly backup).
+
+    Args:
+        logger: The logger object.
+    """
     start_time = timer()
     logger.info("Starting monthly backup process...")
     
@@ -178,8 +209,14 @@ def archive_task(logger):
     end_time = timer(start_time)
     logger.info(f"Monthly backup process completed. Total duration: {end_time}")
 
-def par_task(logger, incr):
-    """Perform the PAR task (create and verify PAR2 files)."""
+def par_task(logger, incr: str) -> None:
+    """
+    Perform the PAR task (create and verify PAR2 files).
+
+    Args:
+        logger: The logger object.
+        incr (str): The increment value.
+    """
     config = load_config(MONTHLY_CONFIG)
     archives = config['backup_folders']
     
@@ -203,14 +240,24 @@ def par_task(logger, incr):
     duration = end_time - start_time
     logger.info(f"Par file creation completed! (Duration: {duration})")
 
-def main():
-    """Main function to parse command-line arguments and execute the appropriate task(s)."""
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: Parsed arguments.
+    """
     parser = argparse.ArgumentParser(description="Monthly backup and optional PAR file creation script")
     parser.add_argument("--archive", action="store_true", help="Run the archive task")
     parser.add_argument("--par", help="Run the PAR file creation task. Requires a date value in YYMMDD format.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args()
+    return parser.parse_args()
 
+def main() -> None:
+    """
+    Main function to parse command-line arguments and execute the appropriate task(s).
+    """
+    args = parse_arguments()
     logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY, args.debug)
 
     if not args.archive and not args.par:

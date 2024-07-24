@@ -1,16 +1,33 @@
+"""
+Git operations handler for backup processes.
+
+This module provides functions for performing Git operations
+as part of the backup process.
+"""
+
 import os
 import subprocess
 import logging
 from datetime import datetime
+from pathlib import Path
 from .config import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
-def git_operations(dir_path):
+def git_operations(dir_path: str) -> bool:
+    """
+    Perform Git operations (add, commit) on a specified directory.
+
+    Args:
+        dir_path (str): The path to the Git repository relative to BASE_DIR.
+
+    Returns:
+        bool: True if all Git operations were successful, False otherwise.
+    """
     full_path = BASE_DIR / dir_path
     os.chdir(full_path)
     logger.info(f"Git: Processing {dir_path}...")
-    logger.info(f"Current working directory: {os.getcwd()}")
+    logger.debug(f"Current working directory: {os.getcwd()}")
     
     try:
         # Log Git status before operations 
@@ -35,7 +52,7 @@ def git_operations(dir_path):
             logger.info(f"Changes committed in {dir_path}")
         else:
             # No changes to commit
-            logger.debug(f"No changes to commit in {dir_path}")
+            logger.info(f"No changes to commit")
         
         # Show detailed status after operations
         logger.debug("Git status after operations:")

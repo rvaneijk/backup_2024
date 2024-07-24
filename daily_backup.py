@@ -36,6 +36,7 @@ import os
 import sys
 import subprocess
 import argparse
+from typing import NoReturn
 from core.config import (
     AWS_DIR, DAILY_BACKUP_TYPE, DAILY_FREQUENCY,
     DAILY_BACKUP_FOLDERS, GIT_DIRS, BACKUP_PASSWORD_ENV
@@ -46,12 +47,18 @@ from core.git_handler import git_operations
 from core.backup_handler import backup_folder
 from core.utils import timer
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
+    """
     parser = argparse.ArgumentParser(description="Daily Backup Script")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     return parser.parse_args()
 
-def main():
+def main() -> NoReturn:
     """
     Main function to execute the daily backup process.
 
@@ -65,8 +72,8 @@ def main():
 
     The function will exit with a non-zero status code if any step fails.
 
-    Returns:
-        None
+    Raises:
+        SystemExit: If any step of the backup process fails.
     """
     args = parse_arguments()
     logger = setup_logging(DAILY_BACKUP_TYPE, DAILY_FREQUENCY, args.debug)
@@ -74,19 +81,16 @@ def main():
     logger.info("Starting daily backup process...")
     logger.info("Use --debug option for more detailed logging if needed.")
     
-    # Check if the backup destination is mounted
     if not check_mount():
         logger.error("Failed to access the backup destination. Exiting.")
         sys.exit(1)
     
-    # Check for backup password
     if BACKUP_PASSWORD_ENV not in os.environ:
         logger.error(f"Error: {BACKUP_PASSWORD_ENV} environment variable is not set")
         logger.info(f"To run this script, set the {BACKUP_PASSWORD_ENV} environment variable:")
         logger.info(f"export {BACKUP_PASSWORD_ENV}='your_secure_password'")
         sys.exit(1)
     
-    # Display disk space information
     logger.info("DISK space on the device before backup:")
     subprocess.run(["df", "-h", "--total", str(AWS_DIR)])
     
