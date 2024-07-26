@@ -1,13 +1,5 @@
-"""
-Configuration module for backup operations.
-
-This module loads and stores configuration settings from YAML files
-for various backup operations and directories.
-"""
-
 import yaml
 from pathlib import Path
-from typing import Dict, Any
 
 # Base directories
 BASE_DIR = Path("/mnt/e")
@@ -20,16 +12,8 @@ DAILY_CONFIG = Path("configs/daily_config.yaml")
 WEEKLY_CONFIG = Path("configs/weekly_config.yaml")
 MONTHLY_CONFIG = Path("configs/monthly_config.yaml")
 
-def load_config(config_file: Path) -> Dict[str, Any]:
-    """
-    Load and return the configuration from a YAML file.
-
-    Args:
-        config_file (Path): Path to the YAML configuration file.
-
-    Returns:
-        Dict[str, Any]: Dictionary containing the configuration settings.
-    """
+def load_config(config_file):
+    """Load and return the configuration from a YAML file."""
     with open(config_file, 'r') as file:
         return yaml.safe_load(file)
 

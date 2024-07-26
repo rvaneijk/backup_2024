@@ -1,11 +1,3 @@
-"""
-File system operations for backup processes.
-
-This module provides functions for managing file system operations
-related to backup processes, including mounting and unmounting drives,
-and ensuring directories exist.
-"""
-
 import os
 import subprocess
 import sys
@@ -15,13 +7,7 @@ from .config import AWS_DIR, BASE_DIR
 
 logger = logging.getLogger(__name__)
 
-def check_mount() -> bool:
-    """
-    Check if the backup disk is mounted and mount it if necessary.
-
-    Returns:
-        bool: True if the backup disk is mounted and accessible, False otherwise.
-    """
+def check_mount():
     if not BASE_DIR.is_mount():
         logger.info("Backup disk is not mounted. Attempting to mount...")
         
@@ -47,10 +33,7 @@ def check_mount() -> bool:
     logger.info(f"Backup directory {AWS_DIR} is accessible.")
     return True
 
-def unmount() -> None:
-    """
-    Unmount the backup disk if it's currently mounted.
-    """
+def unmount():
     mount_point = Path("/mnt/e")
     
     if mount_point.is_mount():
@@ -63,16 +46,8 @@ def unmount() -> None:
     else:
         logger.info("Backup disk is not mounted. No need to unmount.")
 
-def ensure_dir_exists(dir_path: str) -> None:
-    """
-    Ensure that a directory exists, creating it if necessary.
-
-    Args:
-        dir_path (str): The path of the directory to check/create.
-
-    Raises:
-        SystemExit: If there's a permission error or if the path exists but is not a directory.
-    """
+def ensure_dir_exists(dir_path):
+    """Ensure that a directory exists, creating it if necessary."""
     dir_path = Path(dir_path)
     if not dir_path.exists():
         try:
