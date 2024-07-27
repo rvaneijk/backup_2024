@@ -24,36 +24,45 @@ class JobLogger:
         self.logger = self._setup_logging()
 
     def _setup_logging(self):
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        self.log_file_path = LOG_DIR / f"{self.start_time:%y%m%d}_{self.backup_type}_{self.backup_frequency}.log"
-        
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%y-%m-%d %H:%M:%S')
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            self.log_file_path = LOG_DIR / f"{self.start_time:%y%m%d}_{self.backup_type}_{self.backup_frequency}.log"
+            
+            print(f"Attempting to create log file at: {self.log_file_path}")  # Debug print
+            
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%y-%m-%d %H:%M:%S')
 
-        file_handler = logging.FileHandler(self.log_file_path, mode='a', delay=False)
-        file_handler.setFormatter(formatter)
+            file_handler = logging.FileHandler(self.log_file_path, mode='a', delay=False)
+            file_handler.setFormatter(formatter)
 
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(formatter)
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(formatter)
 
-        logging.basicConfig(
-            level=logging.DEBUG if self.debug_mode else logging.INFO,
-            handlers=[file_handler, console_handler]
-        )
-        
-        logger = logging.getLogger(__name__)
-        
-        job_name = f"{self.start_time:%Y%m%d-%w}. {self.backup_frequency} - {self.backup_type}"
-        
-        if self.log_file_path.stat().st_size == 0:
-           logger.info(f"========================= Job Start: {job_name} ==========================")
-           logger.info(f"Logging started ({self.log_file_path})")
-           logger.info(f"========================================================================================")
-        else:
-            logger.info(f"========================= Job Start: {job_name} ==========================")
-            logger.info(f"Appending to existing log file ({self.log_file_path})")
-            logger.info(f"========================================================================================")
-        
-        return logger
+            logging.basicConfig(
+                level=logging.DEBUG if self.debug_mode else logging.INFO,
+                handlers=[file_handler, console_handler]
+            )
+            
+            logger = logging.getLogger(__name__)
+            
+            job_name = f"{self.start_time:%Y%m%d-%w}. {self.backup_frequency} - {self.backup_type}"
+            
+            if self.log_file_path.exists():
+                if self.log_file_path.stat().st_size == 0:
+                    logger.info(f"========================= Job Start: {job_name} ==========================")
+                    logger.info(f"Logging started ({self.log_file_path})")
+                    logger.info(f"========================================================================================")
+                else:
+                    logger.info(f"========================= Job Start: {job_name} ==========================")
+                    logger.info(f"Appending to existing log file ({self.log_file_path})")
+                    logger.info(f"========================================================================================")
+            else:
+                print(f"Log file does not exist: {self.log_file_path}")  # Debug print
+            
+            return logger
+        except Exception as e:
+            print(f"Error in _setup_logging: {str(e)}")  # Debug print
+            raise
 
     def debug(self, message):
         self.logger.debug(message)
