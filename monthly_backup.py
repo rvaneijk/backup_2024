@@ -13,10 +13,11 @@ Features:
 - Logging of all operations
 - Disk space checking before backup
 - Automatic mounting of backup destination (if not already mounted)
+- Configurable 7-Zip compression level
 
 Usage:
     For archive task only:
-    $ python monthly_backup.py --archive [--debug]
+    $ python monthly_backup.py --archive [--debug] [--compression-level LEVEL]
 
     For PAR file creation task only:
     $ python monthly_backup.py --par YYMMDD [--debug]
@@ -27,6 +28,7 @@ Arguments:
     --archive : Run the archive (backup) task
     --par YYMMDD : Run the PAR file creation task
     --debug : Enable debug logging (default: INFO level logging)
+    --compression-level LEVEL : Set 7-Zip compression level (e.g., -mx0 to -mx9, default: -mx5)
     --help : Show this help message and exit
 
 Environment Variables:
@@ -52,7 +54,7 @@ import yaml
 from core.config import (
     AWS_DIR, MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY,
     MONTHLY_BACKUP_FOLDERS, BACKUP_PASSWORD_ENV, ALLOW_SKIP_MONTHLY,
-    MONTHLY_CONFIG, GIT_DIRS
+    MONTHLY_CONFIG, GIT_DIRS, SEVEN_ZIP_COMPRESSION_LEVEL, DEFAULT_COMPRESSION_LEVEL
 )
 from core.logger import setup_logging
 from core.file_system import check_mount, ensure_dir_exists
@@ -68,23 +70,34 @@ def run_command(command):
     return result.returncode == 0
 
 def process_directory(base_dir, archive_name, incr, logger):
-    """Process a directory for PAR file creation."""
+    """Process a directory for PAR file creation with improved file distribution and new naming convention."""
     os.chdir(base_dir)
     logger.info(f"Processing {base_dir}")
     
-    subdirs = sorted([d for d in os.listdir() if os.path.isdir(d) and d[0].isdigit()])
+    # Collect all relevant files
+    all_files = [f for f in os.listdir() if f.startswith(f"{incr} FULL {archive_name}.7z.")]
+    all_files.sort()  # Ensure files are in order
     
-    for subdir in subdirs:
-        os.chdir(subdir)
+    # Extract the identifier (e.g., "Outlook") from the archive_name
+    identifier = archive_name.split()[0] if ' ' in archive_name else archive_name
+    
+    # Create subdirectories as needed
+    subdir_index = 1
+    for i in range(0, len(all_files), 10):
+        subdir = f"{subdir_index:02d}"
+        os.makedirs(subdir, exist_ok=True)
+        
+        # Move files to subdirectory
+        group_files = all_files[i:i+10]
+        for file in group_files:
+            os.rename(file, os.path.join(subdir, file))
+        
         logger.info(f"  Processing subdirectory: {subdir}")
+        os.chdir(subdir)
         
-        # Move relevant files into the subdirectory
-        for file in os.listdir('..'):
-            if file.startswith(f"{incr} FULL {archive_name}.7z."):
-                os.rename(os.path.join('..', file), file)
-        
-        # Create par2 files
-        par2_create = f"par2 create -c625 {incr}\\ FULL\\ {archive_name}.7z.*"
+        # Create par2 files with the new naming convention
+        par2_base_name = f"{incr} PAR {identifier}"
+        par2_create = f"par2 create -n1 -c625 \"{par2_base_name}\" {incr}\\ FULL\\ {archive_name}.7z.*"
         logger.info(f"Executing PAR2 command: {par2_create}")
         result = subprocess.run(par2_create, shell=True, capture_output=True, text=True)
         if result.returncode != 0:
@@ -94,7 +107,16 @@ def process_directory(base_dir, archive_name, incr, logger):
         else:
             logger.info(f"  par2 create successful for {subdir}")
         
+        # Verify PAR2 files
+        par2_files = [f for f in os.listdir() if f.endswith('.par2')]
+        if len(par2_files) > 0:
+            logger.info(f"  Created {len(par2_files)} PAR2 files for {len(group_files)} zip fragments in {subdir}")
+            logger.info(f"  PAR2 file name: {par2_files[0]}")
+        else:
+            logger.warning(f"  No PAR2 files were created for {subdir}")
+        
         os.chdir('..')
+        subdir_index += 1
     
     # Check for any remaining files
     remaining_files = [f for f in os.listdir() if f.startswith(f"{incr} FULL {archive_name}.7z.")]
@@ -124,7 +146,7 @@ def load_config(config_file):
         print(f"Config file not found: {config_file}")
         sys.exit(1)
 
-def archive_task(logger):
+def archive_task(logger, compression_level):
     """Perform the archive task (monthly backup)."""
     start_time = timer()
     logger.info("Starting monthly backup process...")
@@ -169,8 +191,9 @@ def archive_task(logger):
             folder['dest'], 
             folder['source'], 
             folder['exclude'], 
-            backup_type=MONTHLY_BACKUP_TYPE, 
-            archive_name=folder['archive_name']
+            backup_type=MONTHLY_BACKUP_TYPE,
+            archive_name=folder['archive_name'],
+            compression_level=compression_level
         ):
             logger.error(f"Backup failed for {folder['archive_name']}. Exiting.")
             sys.exit(1)
@@ -179,38 +202,70 @@ def archive_task(logger):
     logger.info(f"Monthly backup process completed. Total duration: {end_time}")
 
 def par_task(logger, incr):
-    """Perform the PAR task (create and verify PAR2 files)."""
+    """Perform the PAR task (create and verify PAR2 files) with increased verbosity."""
     config = load_config(MONTHLY_CONFIG)
     archives = config['backup_folders']
+    
+    logger.info(f"Found {len(archives)} archives in the configuration.")
     
     archives_to_skip = get_items_to_skip(archives, "Select archives to skip (enter the number, separated by spaces):")
     
     start_time = datetime.now()
-    logger.info(f"Starting par file creation process... ({start_time.strftime('%y%m%d %H:%M')})")
+    logger.info(f"Starting PAR file creation process... (Start time: {start_time.strftime('%y%m%d %H:%M')})")
+    
+    total_archives = len(archives)
+    processed_archives = 0
+    skipped_archives = 0
     
     for i, archive in enumerate(archives, 1):
         if i in archives_to_skip:
-            logger.info(f"Skipping {archive['archive_name']}...")
+            logger.info(f"Skipping archive {i}/{total_archives}: {archive['archive_name']}...")
+            skipped_archives += 1
             continue
         
+        logger.info(f"Processing archive {i}/{total_archives}: {archive['archive_name']}")
         full_path = AWS_DIR / archive['dest']
+        
         if os.path.exists(full_path):
+            logger.info(f"Directory found: {full_path}")
             process_directory(full_path, archive['archive_name'], incr, logger)
+            processed_archives += 1
         else:
-            logger.warning(f"Directory {full_path} does not exist. Skipping.")
+            logger.warning(f"Directory does not exist: {full_path}. Skipping this archive.")
+            skipped_archives += 1
     
     end_time = datetime.now()
     duration = end_time - start_time
-    logger.info(f"Par file creation completed! (Duration: {duration})")
+    
+    logger.info("PAR file creation process summary:")
+    logger.info(f"Total archives: {total_archives}")
+    logger.info(f"Processed archives: {processed_archives}")
+    logger.info(f"Skipped archives: {skipped_archives}")
+    logger.info(f"Start time: {start_time.strftime('%y%m%d %H:%M')}")
+    logger.info(f"End time: {end_time.strftime('%y%m%d %H:%M')}")
+    logger.info(f"Total duration: {duration}")
+    
+    if processed_archives == total_archives:
+        logger.info("All archives were successfully processed.")
+    elif processed_archives == 0:
+        logger.warning("No archives were processed. Please check your configuration and inputs.")
+    else:
+        logger.info(f"Processed {processed_archives} out of {total_archives} archives.")
+    
+    logger.info("PAR file creation process completed!")
 
-def main():
-    """Main function to parse command-line arguments and execute the appropriate task(s)."""
-    parser = argparse.ArgumentParser(description="Monthly backup and optional PAR file creation script")
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Monthly Backup Script")
     parser.add_argument("--archive", action="store_true", help="Run the archive task")
     parser.add_argument("--par", help="Run the PAR file creation task. Requires a date value in YYMMDD format.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    args = parser.parse_args()
+    parser.add_argument("--compression-level", type=str, default=SEVEN_ZIP_COMPRESSION_LEVEL,
+                        help=f"7-Zip compression level (e.g., -mx0 to -mx9, default: {SEVEN_ZIP_COMPRESSION_LEVEL})")
+    return parser.parse_args()
 
+def main():
+    args = parse_arguments()
+    compression_level = args.compression_level
     logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY, args.debug)
 
     if not args.archive and not args.par:
@@ -224,9 +279,11 @@ def main():
         sys.exit(1)
 
     logger.info("Use --debug option for more detailed logging if needed.")
+    logger.info(f"Using 7-Zip compression level: {compression_level}")
+    logger.info(f"Default compression level is: {DEFAULT_COMPRESSION_LEVEL}")
 
     if args.archive:
-        archive_task(logger)
+        archive_task(logger, compression_level)
 
     if args.par:
         par_task(logger, args.par)

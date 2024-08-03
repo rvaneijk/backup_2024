@@ -4,13 +4,13 @@ import logging
 from datetime import datetime
 from .config import (
     BASE_DIR, AWS_DIR, BACKUP_PASSWORD_ENV,
-    SEVEN_ZIP_COMPRESSION_LEVEL, SEVEN_ZIP_ENCRYPTION_METHOD,
+    SEVEN_ZIP_ENCRYPTION_METHOD,
     SEVEN_ZIP_SOLID_MODE, SEVEN_ZIP_LARGE_FILE_FILTER
 )
 
 logger = logging.getLogger(__name__)
 
-def backup_folder(dest_dir, source_dir, exclude, backup_type, archive_name):
+def backup_folder(dest_dir, source_dir, exclude, backup_type, archive_name, compression_level):
     NOW = datetime.now().strftime("%y%m%d")
     archive_name = f"{NOW} {backup_type} {archive_name}.7z"
     
@@ -24,7 +24,7 @@ def backup_folder(dest_dir, source_dir, exclude, backup_type, archive_name):
         subprocess.run([
             "7z", "a", "-t7z", str(dest_path), str(source_path),
             "-mmt",  # Use all available threads
-            SEVEN_ZIP_COMPRESSION_LEVEL,
+            compression_level,  # Use the provided compression level
             "-m0=lzma2",  # Use LZMA2 compression method
             "-v1g",  # Split into 1GB volumes
             SEVEN_ZIP_ENCRYPTION_METHOD,
@@ -34,6 +34,7 @@ def backup_folder(dest_dir, source_dir, exclude, backup_type, archive_name):
             *exclude_option
         ], check=True)
         logger.info(f"Backup successful for {archive_name}")
+        logger.info(f"Used compression level: {compression_level}")
         
         # Test operation
         logger.info(f"Testing {archive_name}...")
