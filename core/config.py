@@ -45,8 +45,10 @@ WEEKLY_BACKUP_FOLDERS = weekly_config.get('backup_folders', [])
 MONTHLY_BACKUP_FOLDERS = monthly_config.get('backup_folders', [])
 
 # 7-Zip configuration
-SEVEN_ZIP_COMPRESSION_LEVEL = '-mx3'  # Medium compression
+SEVEN_ZIP_COMPRESSION_LEVEL = '-mx5'  # Balanced compression
 SEVEN_ZIP_ENCRYPTION_METHOD = '-mhe=on'  # Header encryption on
+SEVEN_ZIP_SOLID_MODE = '-ms=off'  # Solid mode off for split archives
+SEVEN_ZIP_LARGE_FILE_FILTER = '-mf=on'  # Large file filter on
 
 # Environment variable name for backup password
 BACKUP_PASSWORD_ENV = 'BACKUP_PASSWORD'

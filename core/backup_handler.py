@@ -2,7 +2,11 @@ import os
 import subprocess
 import logging
 from datetime import datetime
-from .config import BASE_DIR, AWS_DIR, BACKUP_PASSWORD_ENV, SEVEN_ZIP_COMPRESSION_LEVEL, SEVEN_ZIP_ENCRYPTION_METHOD
+from .config import (
+    BASE_DIR, AWS_DIR, BACKUP_PASSWORD_ENV,
+    SEVEN_ZIP_COMPRESSION_LEVEL, SEVEN_ZIP_ENCRYPTION_METHOD,
+    SEVEN_ZIP_SOLID_MODE, SEVEN_ZIP_LARGE_FILE_FILTER
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +20,18 @@ def backup_folder(dest_dir, source_dir, exclude, backup_type, archive_name):
     exclude_option = [f"-xr!{item}" for item in exclude.split()] if exclude else []
     
     try:
-        # Backup operation
+        # Backup operation with configurable 7-Zip parameters
         subprocess.run([
             "7z", "a", "-t7z", str(dest_path), str(source_path),
-            "-mmt=on", SEVEN_ZIP_COMPRESSION_LEVEL, "-m0=lzma2", "-v1g", SEVEN_ZIP_ENCRYPTION_METHOD,
-            f"-p{os.environ[BACKUP_PASSWORD_ENV]}", *exclude_option
+            "-mmt",  # Use all available threads
+            SEVEN_ZIP_COMPRESSION_LEVEL,
+            "-m0=lzma2",  # Use LZMA2 compression method
+            "-v1g",  # Split into 1GB volumes
+            SEVEN_ZIP_ENCRYPTION_METHOD,
+            SEVEN_ZIP_SOLID_MODE,
+            SEVEN_ZIP_LARGE_FILE_FILTER,
+            f"-p{os.environ[BACKUP_PASSWORD_ENV]}",
+            *exclude_option
         ], check=True)
         logger.info(f"Backup successful for {archive_name}")
         
