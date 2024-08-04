@@ -14,6 +14,7 @@ Features:
 - Disk space checking before backup
 - Automatic mounting of backup destination (if not already mounted)
 - Configurable 7-Zip compression level
+- Optimized PAR2 file creation strategy
 
 Usage:
     For archive task only:
@@ -35,7 +36,7 @@ Environment Variables:
     BACKUP_PASSWORD_ENV: Must be set for the archive task (contains the backup password)
 
 Dependencies:
-    - core package (config, logger, file_system, backup_handler, utils, git_handler)
+    - core package (config, logger, file_system, backup_handler, utils, git_handler, par_handler)
     - Standard libraries: os, sys, subprocess, argparse, datetime, yaml
     - External: par2 command-line tool (for PAR task)
 
@@ -61,6 +62,7 @@ from core.file_system import check_mount, ensure_dir_exists
 from core.backup_handler import backup_folder
 from core.utils import timer
 from core.git_handler import git_operations
+from core import par_handler
 
 def run_command(command):
     """Execute a shell command and return its success status."""
@@ -68,62 +70,6 @@ def run_command(command):
     if result.returncode != 0:
         print(f"Warning: Command failed with error: {result.stderr}")
     return result.returncode == 0
-
-def process_directory(base_dir, archive_name, incr, logger):
-    """Process a directory for PAR file creation with improved file distribution and new naming convention."""
-    os.chdir(base_dir)
-    logger.info(f"Processing {base_dir}")
-    
-    # Collect all relevant files
-    all_files = [f for f in os.listdir() if f.startswith(f"{incr} FULL {archive_name}.7z.")]
-    all_files.sort()  # Ensure files are in order
-    
-    # Extract the identifier (e.g., "Outlook") from the archive_name
-    identifier = archive_name.split()[0] if ' ' in archive_name else archive_name
-    
-    # Create subdirectories as needed
-    subdir_index = 1
-    for i in range(0, len(all_files), 10):
-        subdir = f"{subdir_index:02d}"
-        os.makedirs(subdir, exist_ok=True)
-        
-        # Move files to subdirectory
-        group_files = all_files[i:i+10]
-        for file in group_files:
-            os.rename(file, os.path.join(subdir, file))
-        
-        logger.info(f"  Processing subdirectory: {subdir}")
-        os.chdir(subdir)
-        
-        # Create par2 files with the new naming convention
-        par2_base_name = f"{incr} PAR {identifier}"
-        par2_create = f"par2 create -n1 -c625 \"{par2_base_name}\" {incr}\\ FULL\\ {archive_name}.7z.*"
-        logger.info(f"Executing PAR2 command: {par2_create}")
-        result = subprocess.run(par2_create, shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.warning(f"  par2 create failed for {subdir}")
-            logger.debug(f"PAR2 create stdout: {result.stdout}")
-            logger.debug(f"PAR2 create stderr: {result.stderr}")
-        else:
-            logger.info(f"  par2 create successful for {subdir}")
-        
-        # Verify PAR2 files
-        par2_files = [f for f in os.listdir() if f.endswith('.par2')]
-        if len(par2_files) > 0:
-            logger.info(f"  Created {len(par2_files)} PAR2 files for {len(group_files)} zip fragments in {subdir}")
-            logger.info(f"  PAR2 file name: {par2_files[0]}")
-        else:
-            logger.warning(f"  No PAR2 files were created for {subdir}")
-        
-        os.chdir('..')
-        subdir_index += 1
-    
-    # Check for any remaining files
-    remaining_files = [f for f in os.listdir() if f.startswith(f"{incr} FULL {archive_name}.7z.")]
-    if remaining_files:
-        logger.warning(f"The following files were not processed: {', '.join(remaining_files)}")
-    else:
-        logger.info("All files processed successfully.")
 
 def get_items_to_skip(items, skip_prompt):
     """Prompt the user to select items to skip during processing."""
@@ -202,7 +148,7 @@ def archive_task(logger, compression_level):
     logger.info(f"Monthly backup process completed. Total duration: {end_time}")
 
 def par_task(logger, incr):
-    """Perform the PAR task (create and verify PAR2 files) with increased verbosity."""
+    """Perform the PAR task (create and verify PAR2 files) with optimized strategy."""
     config = load_config(MONTHLY_CONFIG)
     archives = config['backup_folders']
     
@@ -228,7 +174,7 @@ def par_task(logger, incr):
         
         if os.path.exists(full_path):
             logger.info(f"Directory found: {full_path}")
-            process_directory(full_path, archive['archive_name'], incr, logger)
+            par_handler.process_archive(full_path, archive['archive_name'], incr, logger)
             processed_archives += 1
         else:
             logger.warning(f"Directory does not exist: {full_path}. Skipping this archive.")
