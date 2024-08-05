@@ -9,43 +9,6 @@ def determine_par_strategy(total_chunks: int) -> Dict:
     """
     Determine the optimal PAR2 creation strategy based on the number of chunks.
     
-    Very small archives (≤2 chunks):
-
-    Covers "AWS Tools" (2 chunks)
-    Highest redundancy (30%) due to the small size
-
-
-    SMALL archives (3-10 chunks):
-
-        Covers "AWS Settings" (9 chunks)
-        High redundancy (25%)
-
-
-    MEDIUM-SMALL archives (11-20 chunks):
-
-        Covers "AWS Outlook" (12 to 16 chunks)
-        20% redundancy for subdirectories, 15% for overall
-
-
-    MEDIUM archives (21-40 chunks):
-
-        Covers "AWS Datakluis" (30 chunks) and "AWS Papers, presentations, webinars etc" (26 chunks)
-        18% redundancy for subdirectories, 12% for overall
-
-
-    LARGE archives (41-70 chunks):
-
-        Covers "AWS Captures_archive" (43 chunks), "AWS PhD_archive" (53 chunks), and "AWS Users" (63 chunks)
-        15% redundancy for subdirectories, 10% for overall
-        Introduces sliding window approach for better protection
-
-
-    VERY LARGE archives (>70 chunks):
-
-        Covers "AWS Onze cd's" (135 chunks) and "AWS Onze foto's" (98 chunks)
-        15% redundancy for subdirectories, 8% for overall
-        Uses larger sliding window for efficiency
-    
     :param total_chunks: Total number of chunks in the archive
     :return: Dictionary containing PAR2 strategy parameters
     """
@@ -224,15 +187,31 @@ def create_par2_for_subdir(base_dir, subdir, archive_name, incr, par2_params, lo
 
 def create_overall_protection_layer(base_dir: str, archive_name: str, incr: str, all_files: List[str], strategy: Dict, logger) -> None:
     logger.info("Creating overall protection layer")
-    month_dir = os.path.join(base_dir, "_ Month")
-    os.chdir(month_dir)
-    logger.debug(f"Current working directory: {os.getcwd()}")
+    
+    # Check if we're already in a '_ Month' directory
+    if os.path.basename(base_dir) == '_ Month':
+        month_dir = base_dir
+    else:
+        month_dir = os.path.join(base_dir, '_ Month')
+    
+    logger.debug(f"Attempting to use directory: {month_dir}")
+    
+    if not os.path.exists(month_dir):
+        logger.error(f"Directory does not exist: {month_dir}")
+        return
+
+    try:
+        os.chdir(month_dir)
+        logger.debug(f"Successfully changed to directory: {os.getcwd()}")
+    except Exception as e:
+        logger.error(f"Failed to change directory to {month_dir}: {str(e)}")
+        return
     
     par2_base_name = f"{incr} FULL {archive_name} OVERALL"
  
     logger.debug(f"Files in directory: {os.listdir()}")
     
-    # Search for matching files in the _ Month directory
+    # Search for matching files in the current directory
     matching_files = glob.glob(f'{incr} FULL {archive_name}.7z.*')
     logger.debug(f"Matching files: {matching_files}")
     
