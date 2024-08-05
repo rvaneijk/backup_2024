@@ -9,27 +9,34 @@ script with command-line options to control execution.
 Features:
 - Monthly backup of specified folders
 - Optional PAR2 file creation for existing backups
+- Optional overall PAR2 file creation for existing backups
 - Git operations on specified directories
 - Logging of all operations
 - Disk space checking before backup
 - Automatic mounting of backup destination (if not already mounted)
 - Configurable 7-Zip compression level
 - Optimized PAR2 file creation strategy
+- Optional 60-minute timeout for directory skip selection
 
 Usage:
     For archive task only:
-    $ python monthly_backup.py --archive [--debug] [--compression-level LEVEL]
+    $ python monthly_backup.py --archive [--debug] [--compression-level LEVEL] [--timeout]
 
     For PAR file creation task only:
     $ python monthly_backup.py --par YYMMDD [--debug]
 
+    For overall PAR file creation task only:
+    $ python monthly_backup.py --overall YYMMDD [--debug]
+
     where YYMMDD is the date of the backup in YYMMDD format.
 
 Arguments:
-    --archive : Run the archive (backup) task
+    --archive : Run the archive task
     --par YYMMDD : Run the PAR file creation task
+    --overall YYMMDD : Run the overall PAR file creation task
     --debug : Enable debug logging (default: INFO level logging)
     --compression-level LEVEL : Set 7-Zip compression level (e.g., -mx0 to -mx9, default: -mx5)
+    --timeout : Enable 60-minute timeout for directory skip selection
     --help : Show this help message and exit
 
 Environment Variables:
@@ -37,7 +44,7 @@ Environment Variables:
 
 Dependencies:
     - core package (config, logger, file_system, backup_handler, utils, git_handler, par_handler)
-    - Standard libraries: os, sys, subprocess, argparse, datetime, yaml
+    - Standard libraries: os, sys, subprocess, argparse, datetime, yaml, signal
     - External: par2 command-line tool (for PAR task)
 
 Exit codes:
@@ -51,6 +58,7 @@ import subprocess
 import argparse
 from datetime import datetime
 import yaml
+import signal
 
 from core.config import (
     AWS_DIR, MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY,
@@ -64,6 +72,9 @@ from core.utils import timer
 from core.git_handler import git_operations
 from core import par_handler
 
+# Global variable to store user input
+user_input = None
+
 def run_command(command):
     """Execute a shell command and return its success status."""
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -71,13 +82,41 @@ def run_command(command):
         print(f"Warning: Command failed with error: {result.stderr}")
     return result.returncode == 0
 
-def get_items_to_skip(items, skip_prompt):
-    """Prompt the user to select items to skip during processing."""
+def input_with_timeout(prompt, timeout):
+    """Get user input with a timeout."""
+    def alarm_handler(signum, frame):
+        raise TimeoutError()
+    
+    signal.signal(signal.SIGALRM, alarm_handler)
+    signal.alarm(timeout)
+    
+    try:
+        global user_input
+        user_input = input(prompt)
+        signal.alarm(0)  # Cancel the alarm
+    except TimeoutError:
+        print("\nNo input received. Continuing with all items...")
+        signal.alarm(0)  # Cancel the alarm
+        user_input = ""
+
+def get_items_to_skip(items, skip_prompt, logger, use_timeout):
+    """Prompt the user to select items to skip during processing, with an optional 60-minute timeout."""
     print(skip_prompt)
     for i, item in enumerate(items, 1):
         print(f"{i}. {item['archive_name']}")
-    skip_input = input("Enter numbers to skip (or press Enter to process all): ")
-    skip_numbers = [int(num) for num in skip_input.split() if num.isdigit()]
+    
+    if use_timeout:
+        timeout_seconds = 60 * 60  # 60 minutes
+        input_with_timeout("Enter numbers to skip (or press Enter to process all): ", timeout_seconds)
+        
+        global user_input
+        if user_input is None:
+            logger.info("Timeout reached. Continuing with all items.")
+            return set()
+    else:
+        user_input = input("Enter numbers to skip (or press Enter to process all): ")
+    
+    skip_numbers = [int(num) for num in user_input.split() if num.isdigit()]
     return set(skip_numbers)
 
 def load_config(config_file):
@@ -92,7 +131,7 @@ def load_config(config_file):
         print(f"Config file not found: {config_file}")
         sys.exit(1)
 
-def archive_task(logger, compression_level):
+def archive_task(logger, compression_level, use_timeout):
     """Perform the archive task (monthly backup)."""
     start_time = timer()
     logger.info("Starting monthly backup process...")
@@ -118,7 +157,7 @@ def archive_task(logger, compression_level):
             sys.exit(1)
     
     if ALLOW_SKIP_MONTHLY:
-        folders_to_skip = get_items_to_skip(MONTHLY_BACKUP_FOLDERS, "Select folders to skip (enter the number, separated by spaces):")
+        folders_to_skip = get_items_to_skip(MONTHLY_BACKUP_FOLDERS, "Select folders to skip (enter the number, separated by spaces):", logger, use_timeout)
     else:
         folders_to_skip = set()
     
@@ -154,7 +193,7 @@ def par_task(logger, incr):
     
     logger.info(f"Found {len(archives)} archives in the configuration.")
     
-    archives_to_skip = get_items_to_skip(archives, "Select archives to skip (enter the number, separated by spaces):")
+    archives_to_skip = get_items_to_skip(archives, "Select archives to skip (enter the number, separated by spaces):", logger, False)
     
     start_time = datetime.now()
     logger.info(f"Starting PAR file creation process... (Start time: {start_time.strftime('%y%m%d %H:%M')})")
@@ -200,13 +239,71 @@ def par_task(logger, incr):
     
     logger.info("PAR file creation process completed!")
 
+def overall_par_task(logger, incr):
+    config = load_config(MONTHLY_CONFIG)
+    archives = config['backup_folders']
+    
+    logger.info(f"Found {len(archives)} archives in the configuration.")
+    
+    archives_to_skip = get_items_to_skip(archives, "Select archives to skip for overall PAR (enter the number, separated by spaces):", logger, False)
+    
+    start_time = datetime.now()
+    logger.info(f"Starting overall PAR file creation process... (Start time: {start_time.strftime('%y%m%d %H:%M')})")
+    
+    total_archives = len(archives)
+    processed_archives = 0
+    skipped_archives = 0
+    
+    for i, archive in enumerate(archives, 1):
+        if i in archives_to_skip:
+            logger.info(f"Skipping archive {i}/{total_archives}: {archive['archive_name']}...")
+            skipped_archives += 1
+            continue
+        
+        logger.info(f"Processing archive {i}/{total_archives}: {archive['archive_name']}")
+        full_path = AWS_DIR / archive['dest']
+        
+        if os.path.exists(full_path):
+            logger.info(f"Directory found: {full_path}")
+            try:
+                strategy = {'overall_par2_params': '-n40 -r5 -u -m10240'}
+                par_handler.create_overall_protection_layer(full_path, archive['archive_name'], incr, [], strategy, logger)
+                processed_archives += 1
+            except Exception as e:
+                logger.error(f"Error processing archive {archive['archive_name']}: {str(e)}")
+        else:
+            logger.warning(f"Directory does not exist: {full_path}. Skipping this archive.")
+            skipped_archives += 1
+    
+    end_time = datetime.now()
+    duration = end_time - start_time
+    
+    logger.info("Overall PAR file creation process summary:")
+    logger.info(f"Total archives: {total_archives}")
+    logger.info(f"Processed archives: {processed_archives}")
+    logger.info(f"Skipped archives: {skipped_archives}")
+    logger.info(f"Start time: {start_time.strftime('%y%m%d %H:%M')}")
+    logger.info(f"End time: {end_time.strftime('%y%m%d %H:%M')}")
+    logger.info(f"Total duration: {duration}")
+    
+    if processed_archives == total_archives:
+        logger.info("All archives were successfully processed for overall PAR.")
+    elif processed_archives == 0:
+        logger.warning("No archives were processed. Please check your configuration and inputs.")
+    else:
+        logger.info(f"Processed {processed_archives} out of {total_archives} archives for overall PAR.")
+    
+    logger.info("Overall PAR file creation process completed!")
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Monthly Backup Script")
     parser.add_argument("--archive", action="store_true", help="Run the archive task")
     parser.add_argument("--par", help="Run the PAR file creation task. Requires a date value in YYMMDD format.")
+    parser.add_argument("--overall", help="Run the overall PAR file creation task. Requires a date value in YYMMDD format.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--compression-level", type=str, default=SEVEN_ZIP_COMPRESSION_LEVEL,
                         help=f"7-Zip compression level (e.g., -mx0 to -mx9, default: {SEVEN_ZIP_COMPRESSION_LEVEL})")
+    parser.add_argument("--timeout", action="store_true", help="Enable 60-minute timeout for directory skip selection")
     return parser.parse_args()
 
 def main():
@@ -214,13 +311,13 @@ def main():
     compression_level = args.compression_level
     logger = setup_logging(MONTHLY_BACKUP_TYPE, MONTHLY_FREQUENCY, args.debug)
 
-    if not args.archive and not args.par:
-        logger.error("Error: At least one of --archive or --par must be specified")
+    if not args.archive and not args.par and not args.overall:
+        logger.error("Error: At least one of --archive, --par, or --overall must be specified")
         parser.print_help()
         sys.exit(1)
 
-    if args.par and not args.par.isdigit():
-        logger.error("Error: --par requires a date value in YYMMDD format")
+    if (args.par or args.overall) and not (args.par or args.overall).isdigit():
+        logger.error("Error: --par and --overall require a date value in YYMMDD format")
         parser.print_help()
         sys.exit(1)
 
@@ -229,10 +326,13 @@ def main():
     logger.info(f"Default compression level is: {DEFAULT_COMPRESSION_LEVEL}")
 
     if args.archive:
-        archive_task(logger, compression_level)
+        archive_task(logger, compression_level, args.timeout)
 
     if args.par:
         par_task(logger, args.par)
+
+    if args.overall:
+        overall_par_task(logger, args.overall)
 
     logger.info("For more detailed logs, use the --debug option when running the script.")
     logger.close()

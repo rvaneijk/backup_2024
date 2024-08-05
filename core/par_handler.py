@@ -2,54 +2,111 @@ import os
 import subprocess
 import math
 import shutil
+import glob
 from typing import List, Dict
 
 def determine_par_strategy(total_chunks: int) -> Dict:
     """
     Determine the optimal PAR2 creation strategy based on the number of chunks.
     
+    Very small archives (≤2 chunks):
+
+    Covers "AWS Tools" (2 chunks)
+    Highest redundancy (30%) due to the small size
+
+
+    SMALL archives (3-10 chunks):
+
+        Covers "AWS Settings" (9 chunks)
+        High redundancy (25%)
+
+
+    MEDIUM-SMALL archives (11-20 chunks):
+
+        Covers "AWS Outlook" (12 to 16 chunks)
+        20% redundancy for subdirectories, 15% for overall
+
+
+    MEDIUM archives (21-40 chunks):
+
+        Covers "AWS Datakluis" (30 chunks) and "AWS Papers, presentations, webinars etc" (26 chunks)
+        18% redundancy for subdirectories, 12% for overall
+
+
+    LARGE archives (41-70 chunks):
+
+        Covers "AWS Captures_archive" (43 chunks), "AWS PhD_archive" (53 chunks), and "AWS Users" (63 chunks)
+        15% redundancy for subdirectories, 10% for overall
+        Introduces sliding window approach for better protection
+
+
+    VERY LARGE archives (>70 chunks):
+
+        Covers "AWS Onze cd's" (135 chunks) and "AWS Onze foto's" (98 chunks)
+        15% redundancy for subdirectories, 8% for overall
+        Uses larger sliding window for efficiency
+    
     :param total_chunks: Total number of chunks in the archive
     :return: Dictionary containing PAR2 strategy parameters
     """
-    if total_chunks <= 10:
+    if total_chunks <= 2:
         return {
             'subdirs': 1,
             'chunks_per_subdir': total_chunks,
-            'par2_params': '-n8 -r20 -u -m4096',  # Small archives (≤10 chunks): High redundancy (20%) because the total size is small, so we can afford more protection without significant space impact.
+            'par2_params': '-n4 -r30 -u -m2048',  # Very small archives (≤2 chunks): Highest redundancy (30%)
             'use_sliding_window': False,
             'create_overall_par': False
         }
-    elif total_chunks <= 30:
+    elif total_chunks <= 10:
         return {
-            'subdirs': math.ceil(total_chunks / 10),
-            'chunks_per_subdir': 10,
-            'par2_params': '-n16 -r15 -u -m8192',  # 15% for subdirectories to provide strong local protection
+            'subdirs': 1,
+            'chunks_per_subdir': total_chunks,
+            'par2_params': '-n8 -r25 -u -m4096',  # Small archives (3-10 chunks): High redundancy (25%)
             'use_sliding_window': False,
-            'create_overall_par': True,
-            'overall_par2_params': '-n24 -r10 -u -m12288'  # Increased to 10% redundancy for overall to provide an additional layer of protection without too much overhead
+            'create_overall_par': False
         }
-    elif total_chunks <= 50:
+    elif total_chunks <= 20:
+        return {
+            'subdirs': math.ceil(total_chunks / 5),
+            'chunks_per_subdir': 5,
+            'par2_params': '-n12 -r20 -u -m6144',  # Medium-small archives (11-20 chunks): 20% redundancy
+            'use_sliding_window': False,
+            'create_overall_par': True,
+            'overall_par2_params': '-n16 -r15 -u -m6144'  # 15% redundancy for overall
+        }
+    elif total_chunks <= 40:
         return {
             'subdirs': math.ceil(total_chunks / 10),
             'chunks_per_subdir': 10,
-            'par2_params': '-n24 -r15 -u -m8192',  # 15% for subdirectories to provide strong local protection
+            'par2_params': '-n16 -r18 -u -m8192',  # Medium archives (21-40 chunks): 18% redundancy
             'use_sliding_window': False,
             'create_overall_par': True,
-            'overall_par2_params': '-n32 -r8 -u -m12288'  # 8% redundancy for overall to provide an additional layer of protection without too much overhead
+            'overall_par2_params': '-n24 -r12 -u -m8192'  # 12% redundancy for overall
+        }
+    elif total_chunks <= 70:
+        return {
+            'subdirs': math.ceil(total_chunks / 20),
+            'chunks_per_subdir': 20,
+            'par2_params': '-n24 -r15 -u -m10240',  # Large archives (41-70 chunks): 15% redundancy
+            'use_sliding_window': True,
+            'window_size': 20,
+            'window_slide': 5,
+            'create_overall_par': True,
+            'overall_par2_params': '-n32 -r10 -u -m10240'  # 10% redundancy for overall
         }
     else:
         return {
             'subdirs': math.ceil(total_chunks / 40),
             'chunks_per_subdir': 40,
-            'par2_params': '-n32 -r15 -u -m10240',  # 15% for subdirectories to provide strong local protection
+            'par2_params': '-n32 -r15 -u -m12288',  # Very large archives (>70 chunks): 15% redundancy
             'use_sliding_window': True,
             'window_size': 40,
             'window_slide': 10,
             'create_overall_par': True,
-            'overall_par2_params': '-n40 -r5 -u -m12288'  # Keeping 5% for very large archives for overall to provide an additional layer of protection without too much overhead
+            'overall_par2_params': '-n40 -r8 -u -m12288'  # 8% redundancy for overall
         }
 
-def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks: int, logger) -> None:
+def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks: int, logger, strategy: Dict) -> None:
     """
     Create PAR2 files for the given archive using an optimized strategy.
     
@@ -58,12 +115,12 @@ def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks
     :param incr: Increment value (usually date in YYMMDD format)
     :param total_chunks: Total number of chunks in the archive
     :param logger: Logger object for logging messages
+    :param strategy: Strategy dictionary for PAR2 creation
     """
     original_dir = os.getcwd()
     os.chdir(month_dir)
     logger.debug(f"Processing {month_dir}")
     
-    strategy = determine_par_strategy(total_chunks)
     all_files = sorted([f for f in os.listdir() if f.startswith(f"{incr} FULL {archive_name}.7z.")])
     logger.debug(f"Relevant files for PAR2 creation: {all_files}")
     
@@ -83,27 +140,50 @@ def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks
 
 def create_par2_with_subdirs(base_dir: str, archive_name: str, incr: str, all_files: List[str], strategy: Dict, logger) -> None:
     """
-    Create PAR2 files using subdirectories and symlinks.
+    Create PAR2 files using subdirectories and symlinks, implementing a sliding window for large archives.
     """
-    for subdir_index in range(1, strategy['subdirs'] + 1):
-        subdir = f"{incr} FULL {archive_name} {subdir_index:02d}"
-        subdir_path = os.path.join(base_dir, subdir)
-        os.makedirs(subdir_path, exist_ok=True)
-        
-        start_index = (subdir_index - 1) * strategy['chunks_per_subdir']
-        end_index = min(subdir_index * strategy['chunks_per_subdir'], len(all_files))
-        group_files = all_files[start_index:end_index]
-        
-        for file in group_files:
-            try:
-                source_path = os.path.join(base_dir, file)
-                link_path = os.path.join(subdir_path, file)
-                os.symlink(source_path, link_path)
-                logger.debug(f"Created symlink for {file} in {subdir_path}")
-            except Exception as e:
-                logger.error(f"Error creating symlink for {file}: {str(e)}")
-        
-        create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
+    if strategy['use_sliding_window']:
+        window_size = strategy['window_size']
+        window_slide = strategy['window_slide']
+        for window_start in range(0, len(all_files), window_slide):
+            window_end = min(window_start + window_size, len(all_files))
+            window_files = all_files[window_start:window_end]
+            
+            subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
+            subdir_path = os.path.join(base_dir, subdir)
+            os.makedirs(subdir_path, exist_ok=True)
+            
+            for file in window_files:
+                try:
+                    source_path = os.path.join(base_dir, file)
+                    link_path = os.path.join(subdir_path, file)
+                    os.symlink(source_path, link_path)
+                    logger.debug(f"Created symlink for {file} in {subdir_path}")
+                except Exception as e:
+                    logger.error(f"Error creating symlink for {file}: {str(e)}")
+            
+            create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
+    else:
+        # Original implementation for non-sliding window cases
+        for subdir_index in range(1, strategy['subdirs'] + 1):
+            subdir = f"{incr} FULL {archive_name} {subdir_index:02d}"
+            subdir_path = os.path.join(base_dir, subdir)
+            os.makedirs(subdir_path, exist_ok=True)
+            
+            start_index = (subdir_index - 1) * strategy['chunks_per_subdir']
+            end_index = min(subdir_index * strategy['chunks_per_subdir'], len(all_files))
+            group_files = all_files[start_index:end_index]
+            
+            for file in group_files:
+                try:
+                    source_path = os.path.join(base_dir, file)
+                    link_path = os.path.join(subdir_path, file)
+                    os.symlink(source_path, link_path)
+                    logger.debug(f"Created symlink for {file} in {subdir_path}")
+                except Exception as e:
+                    logger.error(f"Error creating symlink for {file}: {str(e)}")
+            
+            create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
 
 def create_par2_for_subdir(base_dir, subdir, archive_name, incr, par2_params, logger):
     dir_path = os.path.join(base_dir, subdir)
@@ -143,23 +223,54 @@ def create_par2_for_subdir(base_dir, subdir, archive_name, incr, par2_params, lo
     os.chdir(base_dir)
 
 def create_overall_protection_layer(base_dir: str, archive_name: str, incr: str, all_files: List[str], strategy: Dict, logger) -> None:
-    """
-    Create an overall protection layer PAR2 file for the entire archive.
-    """
     logger.info("Creating overall protection layer")
-    os.chdir(base_dir)
+    month_dir = os.path.join(base_dir, "_ Month")
+    os.chdir(month_dir)
     logger.debug(f"Current working directory: {os.getcwd()}")
     
     par2_base_name = f"{incr} FULL {archive_name} OVERALL"
-    par2_create = f"par2 create {strategy['overall_par2_params']} \"{par2_base_name}\" {incr}\\ FULL\\ {archive_name}.7z.*"
-    logger.debug(f"Executing overall PAR2 command: {par2_create}")
+ 
+    logger.debug(f"Files in directory: {os.listdir()}")
     
-    result = subprocess.run(par2_create, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        logger.error("Overall PAR2 creation failed")
-        logger.debug(f"Error output: {result.stderr}")
+    # Search for matching files in the _ Month directory
+    matching_files = glob.glob(f'{incr} FULL {archive_name}.7z.*')
+    logger.debug(f"Matching files: {matching_files}")
+    
+    if not matching_files:
+        logger.warning(f"No matching files found for overall PAR creation in {month_dir}")
+        return
+    
+    # Determine the correct strategy based on the number of chunks
+    total_chunks = len(matching_files)
+    if total_chunks <= 2:
+        overall_par2_params = '-n4 -r30 -u -m2048'
+    elif total_chunks <= 10:
+        overall_par2_params = '-n8 -r25 -u -m4096'
+    elif total_chunks <= 20:
+        overall_par2_params = '-n16 -r15 -u -m6144'
+    elif total_chunks <= 40:
+        overall_par2_params = '-n24 -r12 -u -m8192'
+    elif total_chunks <= 70:
+        overall_par2_params = '-n32 -r10 -u -m10240'
     else:
+        overall_par2_params = '-n40 -r8 -u -m12288'
+    
+    logger.debug(f"Using overall PAR2 parameters: {overall_par2_params}")
+    
+    # Split the par2 parameters
+    par2_params = overall_par2_params.split()
+    
+    # Prepare the command
+    par2_command = ["par2", "create"] + par2_params + [par2_base_name] + matching_files
+    logger.debug(f"Executing overall PAR2 command: {' '.join(par2_command)}")
+    
+    try:
+        result = subprocess.run(par2_command, capture_output=True, text=True, check=True)
         logger.info("Overall PAR2 creation successful")
+        logger.debug(f"PAR2 output: {result.stdout}")
+    except subprocess.CalledProcessError as e:
+        logger.error("Overall PAR2 creation failed")
+        logger.debug(f"Error output: {e.stderr}")
     
     par2_files = [f for f in os.listdir() if f.endswith('.par2') and 'OVERALL' in f]
     if par2_files:
@@ -184,7 +295,7 @@ def get_relevant_chunks(base_dir: str, archive_name: str, target_date: str, logg
     logger.debug(f"Relevant files found: {relevant_files}")
     return sorted(relevant_files)
 
-def process_archive(base_dir: str, archive_name: str, incr: str, logger) -> None:
+def process_archive(base_dir: str, archive_name: str, incr: str, logger, strategy: Dict = None) -> None:
     """
     Process an entire archive, determining chunk count and creating PAR2 files.
     
@@ -192,6 +303,7 @@ def process_archive(base_dir: str, archive_name: str, incr: str, logger) -> None
     :param archive_name: Name of the archive
     :param incr: Increment value (date in YYMMDD format)
     :param logger: Logger object for logging messages
+    :param strategy: Optional strategy dictionary for PAR2 creation
     """
     os.chdir(base_dir)
     logger.info(f"Processing archive: {archive_name}")
@@ -225,4 +337,7 @@ def process_archive(base_dir: str, archive_name: str, incr: str, logger) -> None
         logger.error(f"No chunks were moved to {month_dir}. Aborting PAR2 creation.")
         return
     
-    create_par2_files(month_dir, archive_name, incr, total_chunks, logger)
+    if strategy is None:
+        strategy = determine_par_strategy(total_chunks)
+    
+    create_par2_files(month_dir, archive_name, incr, total_chunks, logger, strategy)
