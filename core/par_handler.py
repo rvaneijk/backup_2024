@@ -69,6 +69,19 @@ def determine_par_strategy(total_chunks: int) -> Dict:
             'overall_par2_params': '-n40 -r8 -u -m12288'  # 8% redundancy for overall
         }
 
+def create_subdir_with_symlinks(base_dir: str, subdir: str, files: List[str], logger):
+    subdir_path = os.path.join(base_dir, subdir)
+    os.makedirs(subdir_path, exist_ok=True)
+    
+    for file in files:
+        try:
+            source_path = os.path.join(base_dir, file)
+            link_path = os.path.join(subdir_path, file)
+            os.symlink(source_path, link_path)
+            logger.debug(f"Created symlink for {file} in {subdir_path}")
+        except Exception as e:
+            logger.error(f"Error creating symlink for {file}: {str(e)}")
+
 def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks: int, logger, strategy: Dict) -> None:
     """
     Create PAR2 files for the given archive using an optimized strategy.
@@ -108,8 +121,39 @@ def create_par2_with_subdirs(base_dir: str, archive_name: str, incr: str, all_fi
     if strategy['use_sliding_window']:
         window_size = strategy['window_size']
         window_slide = strategy['window_slide']
-        for window_start in range(0, len(all_files), window_slide):
-            window_end = min(window_start + window_size, len(all_files))
+        total_files = len(all_files)
+        
+        window_start = 0
+        while window_start < total_files:
+            window_end = min(window_start + window_size, total_files)
+            window_files = all_files[window_start:window_end]
+            
+            subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
+            subdir_path = os.path.join(base_dir, subdir)
+            os.makedirs(subdir_path, exist_ok=True)
+            
+            for file in window_files:
+                try:
+                    source_path = os.path.join(base_dir, file)
+                    link_path = os.path.join(subdir_path, file)
+                    os.symlink(source_path, link_path)
+                    logger.debug(f"Created symlink for {file} in {subdir_path}")
+                except Exception as e:
+                    logger.error(f"Error creating symlink for {file}: {str(e)}")
+            
+            create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
+            
+            # If this is the last window and it's smaller than the window_size, we're done
+            if window_end == total_files and window_end - window_start < window_size:
+                break
+            
+            # Otherwise, slide the window
+            window_start += window_slide
+        
+        # Handle the case where the last slide didn't reach the end
+        if window_start < total_files:
+            window_start = total_files - window_size
+            window_end = total_files
             window_files = all_files[window_start:window_end]
             
             subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
@@ -196,9 +240,10 @@ def create_overall_protection_layer(base_dir: str, archive_name: str, incr: str,
     
     logger.debug(f"Attempting to use directory: {month_dir}")
     
+    # Fallback to base_dir if '_ Month' doesn't exist
     if not os.path.exists(month_dir):
-        logger.error(f"Directory does not exist: {month_dir}")
-        return
+        logger.info(f"'_ Month' directory not found. Using base directory: {base_dir}")
+        month_dir = base_dir
 
     try:
         os.chdir(month_dir)
@@ -207,12 +252,12 @@ def create_overall_protection_layer(base_dir: str, archive_name: str, incr: str,
         logger.error(f"Failed to change directory to {month_dir}: {str(e)}")
         return
     
-    par2_base_name = f"{incr} FULL {archive_name} OVERALL"
+    par2_base_name = f"{incr} {archive_name} OVERALL"
  
     logger.debug(f"Files in directory: {os.listdir()}")
     
     # Search for matching files in the current directory
-    matching_files = glob.glob(f'{incr} FULL {archive_name}.7z.*')
+    matching_files = glob.glob(f'{incr}*.7z.*')
     logger.debug(f"Matching files: {matching_files}")
     
     if not matching_files:
@@ -270,7 +315,8 @@ def get_relevant_chunks(base_dir: str, archive_name: str, target_date: str, logg
     all_files = os.listdir(base_dir)
     logger.debug(f"All files in {base_dir}: {all_files}")
     
-    relevant_files = [f for f in all_files if f.startswith(f"{target_date} FULL {archive_name}.7z.")]
+    # Modified: Remove 'FULL' from the file pattern
+    relevant_files = [f for f in all_files if f.startswith(f"{target_date} ") and f.endswith(f"{archive_name}.7z.")]
     logger.debug(f"Relevant files found: {relevant_files}")
     return sorted(relevant_files)
 

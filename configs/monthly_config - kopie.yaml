@@ -43,7 +43,3 @@ backup_folders:
     source: "Users"
     archive_name: "Users"
     exclude: ""
-  - dest: "_ Week"
-    source: "Week"
-    archive_name: "Week"
-    exclude: ""
