@@ -143,16 +143,11 @@ def create_par2_with_subdirs(base_dir: str, archive_name: str, incr: str, all_fi
             
             create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
             
-            # If this is the last window and it's smaller than the window_size, we're done
-            if window_end == total_files and window_end - window_start < window_size:
-                break
-            
-            # Otherwise, slide the window
             window_start += window_slide
         
-        # Handle the case where the last slide didn't reach the end
+        # Ensure the last window covers the end of the archive
         if window_start < total_files:
-            window_start = total_files - window_size
+            window_start = max(0, total_files - window_size)
             window_end = total_files
             window_files = all_files[window_start:window_end]
             
@@ -315,8 +310,8 @@ def get_relevant_chunks(base_dir: str, archive_name: str, target_date: str, logg
     all_files = os.listdir(base_dir)
     logger.debug(f"All files in {base_dir}: {all_files}")
     
-    # Modified: Remove 'FULL' from the file pattern
-    relevant_files = [f for f in all_files if f.startswith(f"{target_date} ") and f.endswith(f"{archive_name}.7z.")]
+    # Modified: Include both 'FULL' and non-'FULL' patterns
+    relevant_files = [f for f in all_files if f.startswith(f"{target_date}") and f"{archive_name}.7z." in f]
     logger.debug(f"Relevant files found: {relevant_files}")
     return sorted(relevant_files)
 
