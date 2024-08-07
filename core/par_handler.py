@@ -69,7 +69,7 @@ def determine_par_strategy(total_chunks: int) -> Dict:
             'overall_par2_params': '-n40 -r8 -u -m12288'  # 8% redundancy for overall
         }
 
-def create_subdir_with_symlinks(base_dir: str, subdir: str, files: List[str], logger):
+def create_subdir_and_symlinks(base_dir: str, subdir: str, files: List[str], logger):
     subdir_path = os.path.join(base_dir, subdir)
     os.makedirs(subdir_path, exist_ok=True)
     
@@ -116,76 +116,51 @@ def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks
 
 def create_par2_with_subdirs(base_dir: str, archive_name: str, incr: str, all_files: List[str], strategy: Dict, logger) -> None:
     """
-    Create PAR2 files using subdirectories and symlinks, implementing a sliding window for large archives.
+    Create PAR2 files using subdirectories and symlinks, implementing an improved sliding window for large archives.
     """
     if strategy['use_sliding_window']:
         window_size = strategy['window_size']
         window_slide = strategy['window_slide']
         total_files = len(all_files)
         
-        window_start = 0
-        while window_start < total_files:
-            window_end = min(window_start + window_size, total_files)
-            window_files = all_files[window_start:window_end]
-            
-            subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
-            subdir_path = os.path.join(base_dir, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
-            
-            for file in window_files:
-                try:
-                    source_path = os.path.join(base_dir, file)
-                    link_path = os.path.join(subdir_path, file)
-                    os.symlink(source_path, link_path)
-                    logger.debug(f"Created symlink for {file} in {subdir_path}")
-                except Exception as e:
-                    logger.error(f"Error creating symlink for {file}: {str(e)}")
-            
-            create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
-            
-            window_start += window_slide
+        # Calculate the number of full windows
+        num_full_windows = (total_files - window_size) // window_slide + 1
         
-        # Ensure the last window covers the end of the archive
-        if window_start < total_files:
-            window_start = max(0, total_files - window_size)
-            window_end = total_files
+        for window_index in range(num_full_windows):
+            window_start = window_index * window_slide
+            window_end = window_start + window_size
             window_files = all_files[window_start:window_end]
             
             subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
-            subdir_path = os.path.join(base_dir, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
+            create_subdir_and_symlinks(base_dir, subdir, window_files, logger)
+            create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
+        
+        # Handle the last window to ensure all remaining files are included
+        if window_end < total_files:
+            remaining_files = total_files - window_end
+            if remaining_files <= window_slide:
+                # Adjust the last full window to include the remaining files
+                window_start = total_files - window_size
+                window_end = total_files
+            else:
+                # Create a new window for the remaining files
+                window_start = window_end
+                window_end = total_files
             
-            for file in window_files:
-                try:
-                    source_path = os.path.join(base_dir, file)
-                    link_path = os.path.join(subdir_path, file)
-                    os.symlink(source_path, link_path)
-                    logger.debug(f"Created symlink for {file} in {subdir_path}")
-                except Exception as e:
-                    logger.error(f"Error creating symlink for {file}: {str(e)}")
-            
+            window_files = all_files[window_start:window_end]
+            subdir = f"{incr} FULL {archive_name} {window_start:04d}-{window_end:04d}"
+            create_subdir_and_symlinks(base_dir, subdir, window_files, logger)
             create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
     else:
         # Original implementation for non-sliding window cases
-        for subdir_index in range(1, strategy['subdirs'] + 1):
-            subdir = f"{incr} FULL {archive_name} {subdir_index:02d}"
-            subdir_path = os.path.join(base_dir, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
-            
-            start_index = (subdir_index - 1) * strategy['chunks_per_subdir']
-            end_index = min(subdir_index * strategy['chunks_per_subdir'], len(all_files))
-            group_files = all_files[start_index:end_index]
-            
-            for file in group_files:
-                try:
-                    source_path = os.path.join(base_dir, file)
-                    link_path = os.path.join(subdir_path, file)
-                    os.symlink(source_path, link_path)
-                    logger.debug(f"Created symlink for {file} in {subdir_path}")
-                except Exception as e:
-                    logger.error(f"Error creating symlink for {file}: {str(e)}")
-            
+        chunks_per_subdir = strategy['chunks_per_subdir']
+        for subdir_index, chunk_start in enumerate(range(0, len(all_files), chunks_per_subdir), 1):
+            chunk_end = min(chunk_start + chunks_per_subdir, len(all_files))
+            subdir = f"{incr} FULL {archive_name} {chunk_start:04d}-{chunk_end:04d}"
+            group_files = all_files[chunk_start:chunk_end]
+            create_subdir_and_symlinks(base_dir, subdir, group_files, logger)
             create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
+
 
 def create_par2_for_subdir(base_dir, subdir, archive_name, incr, par2_params, logger):
     dir_path = os.path.join(base_dir, subdir)
