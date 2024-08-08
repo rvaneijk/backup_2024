@@ -82,26 +82,6 @@ def create_subdir_and_symlinks(base_dir: str, subdir: str, files: List[str], log
         except Exception as e:
             logger.error(f"Error creating symlink for {file}: {str(e)}")
 
-def cleanup_symlinks(base_dir: str, logger):
-    """
-    Clean up symlinks in all subdirectories of the given base directory using the 'find' command.
-    
-    :param base_dir: Base directory containing subdirectories with symlinks
-    :param logger: Logger object for logging messages
-    """
-    logger.info(f"Cleaning up symlinks in {base_dir}")
-    try:
-        # Use find command to locate and remove symlinks
-        cmd = f"find {base_dir} -type l -delete"
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
-        logger.info("Symlink cleanup completed successfully")
-        logger.debug(f"Cleanup command output: {result.stdout}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to clean up symlinks: {e}")
-        logger.debug(f"Error output: {e.stderr}")
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during symlink cleanup: {str(e)}")
-
 def create_par2_files(month_dir: str, archive_name: str, incr: str, total_chunks: int, logger, strategy: Dict) -> None:
     """
     Create PAR2 files for the given archive using an optimized strategy.
@@ -180,9 +160,7 @@ def create_par2_with_subdirs(base_dir: str, archive_name: str, incr: str, all_fi
             group_files = all_files[chunk_start:chunk_end]
             create_subdir_and_symlinks(base_dir, subdir, group_files, logger)
             create_par2_for_subdir(base_dir, subdir, archive_name, incr, strategy['par2_params'], logger)
-    
-    # Clean up symlinks after PAR2 creation
-    cleanup_symlinks(base_dir, logger)
+
 
 def create_par2_for_subdir(base_dir, subdir, archive_name, incr, par2_params, logger):
     dir_path = os.path.join(base_dir, subdir)
@@ -288,4 +266,73 @@ def create_overall_protection_layer(base_dir: str, archive_name: str, incr: str,
         logger.error("Overall PAR2 creation failed")
         logger.debug(f"Error output: {e.stderr}")
     
-    par2_files = [f for f in os.listdir()
+    par2_files = [f for f in os.listdir() if f.endswith('.par2') and 'OVERALL' in f]
+    if par2_files:
+        logger.info(f"Created {len(par2_files)} overall PAR2 files")
+    else:
+        logger.warning("No overall PAR2 files were created")
+
+def get_relevant_chunks(base_dir: str, archive_name: str, target_date: str, logger) -> List[str]:
+    """
+    Get all relevant chunks for the given archive and date.
+    
+    :param base_dir: Base directory of the archive
+    :param archive_name: Name of the archive
+    :param target_date: Target date in YYMMDD format
+    :param logger: Logger object for logging messages
+    :return: List of relevant chunk filenames
+    """
+    all_files = os.listdir(base_dir)
+    logger.debug(f"All files in {base_dir}: {all_files}")
+    
+    # Modified: Include both 'FULL' and non-'FULL' patterns
+    relevant_files = [f for f in all_files if f.startswith(f"{target_date}") and f"{archive_name}.7z." in f]
+    logger.debug(f"Relevant files found: {relevant_files}")
+    return sorted(relevant_files)
+
+def process_archive(base_dir: str, archive_name: str, incr: str, logger, strategy: Dict = None) -> None:
+    """
+    Process an entire archive, determining chunk count and creating PAR2 files.
+    
+    :param base_dir: Base directory of the archive
+    :param archive_name: Name of the archive
+    :param incr: Increment value (date in YYMMDD format)
+    :param logger: Logger object for logging messages
+    :param strategy: Optional strategy dictionary for PAR2 creation
+    """
+    os.chdir(base_dir)
+    logger.info(f"Processing archive: {archive_name}")
+    logger.debug(f"Base directory: {base_dir}")
+    
+    relevant_chunks = get_relevant_chunks(base_dir, archive_name, incr, logger)
+    total_chunks = len(relevant_chunks)
+    
+    logger.info(f"Total relevant chunks: {total_chunks}")
+    logger.debug(f"Chunks included: {', '.join(relevant_chunks)}")
+    
+    month_dir = os.path.join(base_dir, "_ Month")
+    os.makedirs(month_dir, exist_ok=True)
+    
+    for chunk in relevant_chunks:
+        source_path = os.path.join(base_dir, chunk)
+        dest_path = os.path.join(month_dir, chunk)
+        if os.path.exists(source_path):
+            if not os.path.exists(dest_path):
+                try:
+                    shutil.move(source_path, dest_path)
+                    logger.debug(f"Moved {chunk} to {month_dir}")
+                except Exception as e:
+                    logger.error(f"Error moving {chunk}: {str(e)}")
+            else:
+                logger.debug(f"{chunk} already exists in {month_dir}")
+        else:
+            logger.warning(f"Chunk file not found: {source_path}")
+    
+    if not os.listdir(month_dir):
+        logger.error(f"No chunks were moved to {month_dir}. Aborting PAR2 creation.")
+        return
+    
+    if strategy is None:
+        strategy = determine_par_strategy(total_chunks)
+    
+    create_par2_files(month_dir, archive_name, incr, total_chunks, logger, strategy)
